@@ -1,0 +1,220 @@
+.upload-container {
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.upload-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.preview-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.preview-img {
+    max-width: 400px;
+    max-height: 400px;
+    width: auto;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.button-group {
+    display: flex;
+    gap: 20px;
+}
+
+.btn {
+    padding: 10px 30px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 1rem;
+    font-family: 'Harmony-regular', sans-serif;
+    transition: all 0.2s;
+    border: none;
+}
+
+.btn-primary {
+    background-color: #409eff;
+    color: white;
+}
+.btn-primary:hover {
+    background-color: #66b1ff;
+}
+
+.btn-secondary {
+    background-color: white;
+    border: 1px solid #ccc;
+    color: #333;
+}
+.btn-secondary:hover {
+    border-color: #409eff;
+    color: #409eff;
+    background-color: #ecf5ff;
+}
+
+.tip {
+    font-size: 2.5rem;
+    font-family: 'Harmony-regular', sans-serif;
+    color: #333;
+}
+
+.tip-sub {
+    font-size: 1rem;
+    color: #999;
+    font-family: 'Harmony-regular', sans-serif;
+}
+
+.display-block {
+    width: 200px;
+    height: 200px;
+    position: relative;
+    cursor: pointer;
+    background-color: transparent;
+    transition: transform 0.2s ease;
+}
+
+.display-block:hover {
+    transform: scale(1.02);
+}
+
+.display-block::before,
+.display-block::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    background-color: #ccc;
+    transform: translate(-50%, -50%);
+    transition: background-color 0.3s;
+}
+
+.display-block::before {
+    width: 40px;
+    height: 2px;
+}
+
+.display-block::after {
+    width: 2px;
+    height: 40px;
+}
+
+.display-block:hover::before,
+.display-block:hover::after {
+    background-color: #409eff;
+}
+
+.corner {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border: 3px solid #333;
+}
+
+.t-l {
+    top: 0;
+    left: 0;
+    border-right: none;
+    border-bottom: none;
+}
+
+.t-r {
+    top: 0;
+    right: 0;
+    border-left: none;
+    border-bottom: none;
+}
+
+.b-l {
+    bottom: 0;
+    left: 0;
+    border-right: none;
+    border-top: none;
+}
+
+.b-r {
+    bottom: 0;
+    right: 0;
+    border-left: none;
+    border-top: none;
+}
+
+.output-canvas {
+    max-width: 90vw;
+    max-height: 70vh;
+    border: 2px solid #409eff;
+    border-radius: 8px;
+    background-color: #1a1a1a;
+}
+
+/* 以下为新增的网格显示样式
+   保持原有的蓝白灰风格，不添加赛博特效
+*/
+
+.processing-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.result-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.matrix-board {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 20px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border: 1px solid #eee;
+}
+
+.matrix-row {
+    display: flex;
+    gap: 5px;
+}
+
+.cell {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 1.2rem;
+    font-family: 'Harmony-regular', sans-serif;
+    color: #333;
+    background-color: #f5f7fa;
+    border-radius: 4px;
+}
+
+.header-cell {
+    font-weight: bold;
+    color: #409eff; /* 使用原本的主题蓝 */
+    background-color: #ecf5ff;
+}
+
+.grid-cell {
+    border: 1px solid #e4e7ed;
+    background-color: white;
+}
+
+.corner-cell {
+    background-color: transparent;
+}
