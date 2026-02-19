@@ -214,8 +214,7 @@ body {
 }
 
 .header-cell {
-    color: #606266;
-    background-color: transparent !important;
+    background-color: #f5f7fa !important;
     border: none !important;
 }
 
@@ -410,56 +409,65 @@ body {
 }
 
 @media (max-width: 768px) {
-    /* 强制拦截并覆盖 Root.vue 里的 inline 样式，改为上下排列 */
     .result-container > div[style*="display: flex"] {
         flex-direction: column !important;
         align-items: center !important;
         gap: 20px !important;
     }
 
-    /* 图片和画布在手机端缩小点，防止撑爆屏幕 */
     .output-canvas,
     .result-container img {
         width: 100% !important;
         max-width: 100% !important;
         height: auto !important;
-        max-height: 45vh !important; /* 限制最大高度 */
+        max-height: 35vh !important;
     }
 
-    /* 缩小上传界面的框框 */
     .upload-placeholder {
         padding: 30px 15px;
         width: 90%;
         box-sizing: border-box;
     }
-    .tip { font-size: 1.5rem; }
-    .display-block { width: 140px; height: 140px; }
-    .preview-wrapper { padding: 10px; }
 
-    /* 矩阵方块和组件方块也要相应缩小，不然一行塞不下 */
-    .matrix-board {
-        padding: 10px 5px;
-        box-shadow: none;
+    .tip { font-size: 1.5rem; }
+
+    .display-block { width: 140px; height: 140px; }
+
+    .preview-wrapper {
+        padding: 10px;
+        padding-bottom: 120px !important;
     }
+
+    .matrix-board {
+        padding: 15px 10px;
+    }
+
     .cell {
         width: 30px;
         height: 30px;
         font-size: 0.8rem;
     }
+
     .lock-icon-svg { width: 14px; height: 14px; }
 
-    .pieces-board { padding: 15px; }
+    .pieces-board {
+        padding: 15px;
+    }
+
     .pieces-grid { gap: 10px; }
+
     .piece-box {
         width: 60px;
         height: 60px;
     }
+
     .piece-cell {
         width: 12px;
         height: 12px;
     }
+
     .btn {
-        padding: 8px 20px;
-        font-size: 0.9rem;
+        padding: 12px 20px;
+        font-size: 1rem;
     }
 }

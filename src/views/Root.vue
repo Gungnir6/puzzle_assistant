@@ -1151,6 +1151,81 @@ const handleWheel = (event, type, index, colorType = null) => {
   }
 };
 
+const dragState = {
+  isDragging: false,
+  hasMoved: false,
+  startY: 0,
+  startVal: 0,
+  type: null,
+  index: -1,
+  colorType: null,
+  maxVal: 0
+};
+
+const startNumberDrag = (e, type, index, colorType = null) => {
+  dragState.isDragging = true;
+  dragState.hasMoved = false;
+  dragState.startY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+
+  dragState.maxVal = type === 'row' ? matrixData.value.cols.length : matrixData.value.rows.length;
+  dragState.type = type;
+  dragState.index = index;
+  dragState.colorType = colorType;
+
+  let dataRef = type === 'row' ? matrixData.value.rows : matrixData.value.cols;
+  dragState.startVal = detectMode.value === 'single' ? dataRef[index] : dataRef[index][colorType];
+
+  if (e.type.includes('mouse')) {
+    document.addEventListener('mousemove', onNumberDrag);
+    document.addEventListener('mouseup', stopNumberDrag);
+  }
+};
+
+const onNumberDrag = (e) => {
+  if (!dragState.isDragging) return;
+  const currentY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+  const deltaY = currentY - dragState.startY;
+
+  if (Math.abs(deltaY) > 5) {
+    dragState.hasMoved = true;
+  }
+
+  if (dragState.hasMoved) {
+    const sensitivity = 20;
+    let diff = Math.round(-deltaY / sensitivity);
+    let newVal = dragState.startVal + diff;
+
+    newVal = Math.max(0, Math.min(dragState.maxVal, newVal));
+
+    let dataRef = dragState.type === 'row' ? matrixData.value.rows : matrixData.value.cols;
+    if (detectMode.value === 'single') {
+      dataRef[dragState.index] = newVal;
+    } else {
+      dataRef[dragState.index][dragState.colorType] = newVal;
+    }
+  }
+};
+
+const stopNumberDrag = () => {
+  if (!dragState.isDragging) return;
+  dragState.isDragging = false;
+
+  if (!dragState.hasMoved) {
+    let newVal = dragState.startVal + 1;
+    if (newVal > dragState.maxVal) newVal = 0;
+
+    let dataRef = dragState.type === 'row' ? matrixData.value.rows : matrixData.value.cols;
+    if (detectMode.value === 'single') {
+      dataRef[dragState.index] = newVal;
+    } else {
+      dataRef[dragState.index][dragState.colorType] = newVal;
+    }
+  }
+
+  document.removeEventListener('mousemove', onNumberDrag);
+  document.removeEventListener('mouseup', stopNumberDrag);
+};
+
 const solvePuzzle = async () => {
   currentStep.value = 'processing';
   await nextTick();
@@ -1395,24 +1470,54 @@ const handleReUpload = () => {
             <div class="matrix-row header-row">
               <div class="cell corner-cell"></div>
               <div v-for="(colVal, i) in matrixData.cols" :key="'col-sol-'+i" class="cell header-cell" style="display:flex; justify-content:center; align-items:center;">
-                <span v-if="detectMode === 'single'" class="adjustable-number" @wheel.prevent="handleWheel($event, 'col', i)">
+                <span v-if="detectMode === 'single'" class="adjustable-number"
+                      @wheel.prevent="handleWheel($event, 'col', i)"
+                      @touchstart="startNumberDrag($event, 'col', i)"
+                      @touchmove.prevent="onNumberDrag"
+                      @touchend="stopNumberDrag"
+                      @mousedown="startNumberDrag($event, 'col', i)">
                   {{ matrixData.cols[i] }}
                 </span>
                 <div v-else style="display:flex; align-items:center; font-size: 1.1rem; gap: 4px;">
-                  <span style="color: #67c23a;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'col', i, 'c1')">{{ matrixData.cols[i].c1 }}</span>
+                  <span style="color: #67c23a;" class="adjustable-number"
+                        @wheel.prevent="handleWheel($event, 'col', i, 'c1')"
+                        @touchstart="startNumberDrag($event, 'col', i, 'c1')"
+                        @touchmove.prevent="onNumberDrag"
+                        @touchend="stopNumberDrag"
+                        @mousedown="startNumberDrag($event, 'col', i, 'c1')">{{ matrixData.cols[i].c1 }}</span>
                   <span style="color: #ccc; font-size: 0.9rem;">|</span>
-                  <span style="color: #409eff;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'col', i, 'c2')">{{ matrixData.cols[i].c2 }}</span>
+                  <span style="color: #409eff;" class="adjustable-number"
+                        @wheel.prevent="handleWheel($event, 'col', i, 'c2')"
+                        @touchstart="startNumberDrag($event, 'col', i, 'c2')"
+                        @touchmove.prevent="onNumberDrag"
+                        @touchend="stopNumberDrag"
+                        @mousedown="startNumberDrag($event, 'col', i, 'c2')">{{ matrixData.cols[i].c2 }}</span>
                 </div>
               </div>
             </div>
             <div v-for="(rowType, rIndex) in matrixData.grid" :key="'row-grid-'+rIndex" class="matrix-row">
               <div class="cell header-cell side-header" style="display:flex; justify-content:center; align-items:center;">
-              <span v-if="detectMode === 'single'" class="adjustable-number" @wheel.prevent="handleWheel($event, 'row', rIndex)">
-                {{ matrixData.rows[rIndex] }}
-              </span>
+                <span v-if="detectMode === 'single'" class="adjustable-number"
+                      @wheel.prevent="handleWheel($event, 'row', rIndex)"
+                      @touchstart="startNumberDrag($event, 'row', rIndex)"
+                      @touchmove.prevent="onNumberDrag"
+                      @touchend="stopNumberDrag"
+                      @mousedown="startNumberDrag($event, 'row', rIndex)">
+                  {{ matrixData.rows[rIndex] }}
+                </span>
                 <div v-else style="display:flex; flex-direction:column; align-items:center; line-height:1.1; font-size: 1rem;">
-                  <span style="color: #409eff;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'row', rIndex, 'c2')">{{ matrixData.rows[rIndex].c2 }}</span>
-                  <span style="color: #67c23a;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'row', rIndex, 'c1')">{{ matrixData.rows[rIndex].c1 }}</span>
+                  <span style="color: #409eff;" class="adjustable-number"
+                        @wheel.prevent="handleWheel($event, 'row', rIndex, 'c2')"
+                        @touchstart="startNumberDrag($event, 'row', rIndex, 'c2')"
+                        @touchmove.prevent="onNumberDrag"
+                        @touchend="stopNumberDrag"
+                        @mousedown="startNumberDrag($event, 'row', rIndex, 'c2')">{{ matrixData.rows[rIndex].c2 }}</span>
+                  <span style="color: #67c23a;" class="adjustable-number"
+                        @wheel.prevent="handleWheel($event, 'row', rIndex, 'c1')"
+                        @touchstart="startNumberDrag($event, 'row', rIndex, 'c1')"
+                        @touchmove.prevent="onNumberDrag"
+                        @touchend="stopNumberDrag"
+                        @mousedown="startNumberDrag($event, 'row', rIndex, 'c1')">{{ matrixData.rows[rIndex].c1 }}</span>
                 </div>
               </div>
               <div v-for="(cellType, cIndex) in rowType"
@@ -1455,24 +1560,54 @@ const handleReUpload = () => {
           <div class="matrix-row header-row">
             <div class="cell corner-cell"></div>
             <div v-for="(colVal, i) in matrixData.cols" :key="'col-sol-'+i" class="cell header-cell" style="display:flex; justify-content:center; align-items:center;">
-                <span v-if="detectMode === 'single'" class="adjustable-number" @wheel.prevent="handleWheel($event, 'col', i)">
+                <span v-if="detectMode === 'single'" class="adjustable-number"
+                      @wheel.prevent="handleWheel($event, 'col', i)"
+                      @touchstart="startNumberDrag($event, 'col', i)"
+                      @touchmove.prevent="onNumberDrag"
+                      @touchend="stopNumberDrag"
+                      @mousedown="startNumberDrag($event, 'col', i)">
                   {{ matrixData.cols[i] }}
                 </span>
               <div v-else style="display:flex; align-items:center; font-size: 1.1rem; gap: 4px;">
-                <span style="color: #67c23a;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'col', i, 'c1')">{{ matrixData.cols[i].c1 }}</span>
+                <span style="color: #67c23a;" class="adjustable-number"
+                      @wheel.prevent="handleWheel($event, 'col', i, 'c1')"
+                      @touchstart="startNumberDrag($event, 'col', i, 'c1')"
+                      @touchmove.prevent="onNumberDrag"
+                      @touchend="stopNumberDrag"
+                      @mousedown="startNumberDrag($event, 'col', i, 'c1')">{{ matrixData.cols[i].c1 }}</span>
                 <span style="color: #ccc; font-size: 0.9rem;">|</span>
-                <span style="color: #409eff;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'col', i, 'c2')">{{ matrixData.cols[i].c2 }}</span>
+                <span style="color: #409eff;" class="adjustable-number"
+                      @wheel.prevent="handleWheel($event, 'col', i, 'c2')"
+                      @touchstart="startNumberDrag($event, 'col', i, 'c2')"
+                      @touchmove.prevent="onNumberDrag"
+                      @touchend="stopNumberDrag"
+                      @mousedown="startNumberDrag($event, 'col', i, 'c2')">{{ matrixData.cols[i].c2 }}</span>
               </div>
             </div>
           </div>
           <div v-for="(row, rIndex) in matrixData.solution" :key="'sol-row-'+rIndex" class="matrix-row">
             <div class="cell header-cell side-header" style="display:flex; justify-content:center; align-items:center;">
-              <span v-if="detectMode === 'single'" class="adjustable-number" @wheel.prevent="handleWheel($event, 'row', rIndex)">
+              <span v-if="detectMode === 'single'" class="adjustable-number"
+                    @wheel.prevent="handleWheel($event, 'row', rIndex)"
+                    @touchstart="startNumberDrag($event, 'row', rIndex)"
+                    @touchmove.prevent="onNumberDrag"
+                    @touchend="stopNumberDrag"
+                    @mousedown="startNumberDrag($event, 'row', rIndex)">
                 {{ matrixData.rows[rIndex] }}
               </span>
               <div v-else style="display:flex; flex-direction:column; align-items:center; line-height:1.1; font-size: 1rem;">
-                <span style="color: #409eff;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'row', rIndex, 'c2')">{{ matrixData.rows[rIndex].c2 }}</span>
-                <span style="color: #67c23a;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'row', rIndex, 'c1')">{{ matrixData.rows[rIndex].c1 }}</span>
+                <span style="color: #409eff;" class="adjustable-number"
+                      @wheel.prevent="handleWheel($event, 'row', rIndex, 'c2')"
+                      @touchstart="startNumberDrag($event, 'row', rIndex, 'c2')"
+                      @touchmove.prevent="onNumberDrag"
+                      @touchend="stopNumberDrag"
+                      @mousedown="startNumberDrag($event, 'row', rIndex, 'c2')">{{ matrixData.rows[rIndex].c2 }}</span>
+                <span style="color: #67c23a;" class="adjustable-number"
+                      @wheel.prevent="handleWheel($event, 'row', rIndex, 'c1')"
+                      @touchstart="startNumberDrag($event, 'row', rIndex, 'c1')"
+                      @touchmove.prevent="onNumberDrag"
+                      @touchend="stopNumberDrag"
+                      @mousedown="startNumberDrag($event, 'row', rIndex, 'c1')">{{ matrixData.rows[rIndex].c1 }}</span>
               </div>
             </div>
             <div v-for="(cellData, cIndex) in row"
