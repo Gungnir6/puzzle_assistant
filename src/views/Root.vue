@@ -43,7 +43,7 @@ const calculateDynamicBounds = (src) => {
   let boxes = [];
   for (let i = 0; i < contours.size(); ++i) {
     let box = cv.boundingRect(contours.get(i));
-    if (box.width > 8 && box.height > 8 && box.width < src.cols * 0.3) {
+    if (box.width > src.cols * 0.003 && box.height > src.rows * 0.003 && box.width < src.cols * 0.3) {
       boxes.push(box);
     }
   }
@@ -61,14 +61,25 @@ const calculateDynamicBounds = (src) => {
     let gap = boxes[i].x - (boxes[i - 1].x + boxes[i - 1].width);
     let gapCenterX = boxes[i - 1].x + boxes[i - 1].width + Math.floor(gap / 2);
 
-    if (gap > maxGap && gap > src.cols * 0.05 && gapCenterX > src.cols * 0.4) {
+    if (gap > maxGap && gap > src.cols * 0.05 && gapCenterX > src.cols * 0.55) {
       maxGap = gap;
       splitX = gapCenterX;
     }
   }
 
   let leftBoxes = boxes.filter(b => b.x + b.width < splitX);
-  let gridMinX = leftBoxes.length > 0 ? Math.min(...leftBoxes.map(b => b.x)) : 0;
+  let gridMinX = 0;
+  if (leftBoxes.length > 0) {
+    let maxLeftGap = 0;
+    for (let i = 1; i < leftBoxes.length; i++) {
+      let gap = leftBoxes[i].x - (leftBoxes[i - 1].x + leftBoxes[i - 1].width);
+      if (gap > maxLeftGap && gap > src.cols * 0.05) {
+        maxLeftGap = gap;
+        gridMinX = leftBoxes[i].x;
+      }
+    }
+    if (maxLeftGap === 0) gridMinX = Math.min(...leftBoxes.map(b => b.x));
+  }
 
   return { roiW: splitX, gridMinX: gridMinX };
 };
@@ -222,7 +233,7 @@ const detectMap = async (imgElement) => {
     let boxes = [];
     for (let i = 0; i < contours.size(); ++i) {
       let box = cv.boundingRect(contours.get(i));
-      if (box.width > 6 && box.height > 6 && box.width < 100 && box.x >= gridMinX - 10) {
+      if (box.width > src.cols * 0.005 && box.height > src.rows * 0.005 && box.width < src.cols * 0.1 && box.x >= gridMinX - 10) {
         boxes.push(box);
       }
     }
@@ -232,22 +243,22 @@ const detectMap = async (imgElement) => {
     let yGroups = [];
     let xGroups = [];
     for (let b of boxes) {
-      let yg = yGroups.find(g => Math.abs(g.y - b.y) < 15);
+      let yg = yGroups.find(g => Math.abs(g.y - b.y) < src.rows * 0.02);
       if (yg) { yg.boxes.push(b); yg.y = (yg.y * (yg.boxes.length - 1) + b.y) / yg.boxes.length; }
       else { yGroups.push({y: b.y, boxes: [b]}); }
 
-      let xg = xGroups.find(g => Math.abs(g.x - b.x) < 15);
+      let xg = xGroups.find(g => Math.abs(g.x - b.x) < src.cols * 0.02);
       if (xg) { xg.boxes.push(b); xg.x = (xg.x * (xg.boxes.length - 1) + b.x) / xg.boxes.length; }
       else { xGroups.push({x: b.x, boxes: [b]}); }
     }
 
     yGroups.sort((a, b) => a.y - b.y);
-    let topYGroup = yGroups.find(g => g.boxes.length >= 3 && (Math.max(...g.boxes.map(b=>b.x)) - Math.min(...g.boxes.map(b=>b.x)) > 80));
+    let topYGroup = yGroups.find(g => g.boxes.length >= 3 && (Math.max(...g.boxes.map(b=>b.x)) - Math.min(...g.boxes.map(b=>b.x)) > src.cols * 0.05));
     let colNums = topYGroup ? topYGroup.boxes : [];
     colNums.sort((a, b) => a.x - b.x);
 
     xGroups.sort((a, b) => a.x - b.x);
-    let leftXGroup = xGroups.find(g => g.boxes.length >= 3 && (Math.max(...g.boxes.map(b=>b.y)) - Math.min(...g.boxes.map(b=>b.y)) > 80));
+    let leftXGroup = xGroups.find(g => g.boxes.length >= 3 && (Math.max(...g.boxes.map(b=>b.y)) - Math.min(...g.boxes.map(b=>b.y)) > src.rows * 0.05));
     let rowNums = leftXGroup ? leftXGroup.boxes : [];
     rowNums.sort((a, b) => a.y - b.y);
 
@@ -324,7 +335,6 @@ const detectMap = async (imgElement) => {
 
       if (reasonableBoxes.length > 0) {
         let maxDim = Math.max(...reasonableBoxes.map(b => Math.max(b.width, b.height)));
-
         for (let box of reasonableBoxes) {
           if (Math.max(box.width, box.height) > maxDim * 0.4) {
             validBoxes.push(box);
@@ -603,7 +613,7 @@ const detectDoubleMapDebug = async (imgElement) => {
     sMask.delete();
     matsToRelease.push(mask);
 
-    let hKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(40, 1));
+    let hKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(Math.floor(src.cols * 0.03), 1));
     let hLines = new cv.Mat();
     cv.morphologyEx(mask, hLines, cv.MORPH_OPEN, hKernel);
     cv.subtract(mask, hLines, mask);
@@ -620,7 +630,7 @@ const detectDoubleMapDebug = async (imgElement) => {
     let boxes = [];
     for (let i = 0; i < contours.size(); ++i) {
       let box = cv.boundingRect(contours.get(i));
-      if (box.width > 6 && box.height > 6 && box.width < 100 && box.x >= gridMinX - 10) {
+      if (box.width > src.cols * 0.003 && box.height > src.rows * 0.003 && box.width < src.cols * 0.1 && box.x >= gridMinX - 10) {
         boxes.push(box);
       }
     }
@@ -629,7 +639,7 @@ const detectDoubleMapDebug = async (imgElement) => {
 
     let minY = Math.min(...boxes.map(b => b.y));
 
-    let colCands = boxes.filter(b => b.y < minY + 30);
+    let colCands = boxes.filter(b => b.y < minY + Math.floor(src.rows * 0.03));
     colCands.sort((a, b) => a.x - b.x);
 
     if (colCands.length > 2) {
