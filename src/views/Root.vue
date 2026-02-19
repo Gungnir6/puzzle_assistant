@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onUnmounted, nextTick } from 'vue'
+import LockIcon from '@/assets/lock.svg';
 
 const imageUrl = ref('');
 const inputImage = ref(null);
@@ -445,7 +446,7 @@ const executeSingleOCR = async () => {
     };
 
     currentStep.value = 'result';
-    statusText.value = "单色地图深度识别完成";
+    statusText.value = "单色图扫描完成";
   } catch (e) {
     console.error(e);
     statusText.value = "识别发生错误";
@@ -942,7 +943,7 @@ const executeDoubleOCR = async () => {
 
     matrixData.value = { rows: rowVals, cols: colVals, grid: finalGrid };
     currentStep.value = 'result';
-    statusText.value = "双色解密完成";
+    statusText.value = "双色图扫描完成";
   } catch (e) {
     console.error(e);
     statusText.value = "识别发生错误";
@@ -967,6 +968,219 @@ const runAnalysis = async () => {
   } else {
     inputImage.value.onload = processImage;
   }
+};
+
+const getSolutionCellClass = (cellData) => {
+  if (!cellData) return 'normal-cell';
+  if (cellData.type === 'obstacle') return 'obstacle-cell';
+  if (cellData.type === 'preset' || cellData.type === 'preset-c1') return 'preset-c1-cell';
+  if (cellData.type === 'preset-c2') return 'preset-c2-cell';
+  if (cellData.type === 'piece') {
+    if (detectMode.value === 'single') return 'cell-piece-single';
+    if (cellData.colorType === 'c1') return 'cell-piece-c1';
+    if (cellData.colorType === 'c2') return 'cell-piece-c2';
+  }
+  return 'normal-cell';
+};
+
+const checkConnection = (r, c, direction) => {
+  const solution = matrixData.value.solution;
+  const current = solution[r][c];
+  if (!current || current.type !== 'piece') return false;
+
+  let nr = r, nc = c;
+  if (direction === 'top') nr--;
+  else if (direction === 'bottom') nr++;
+  else if (direction === 'left') nc--;
+  else if (direction === 'right') nc++;
+  else if (direction === 'top-left') { nr--; nc--; }
+  else if (direction === 'top-right') { nr--; nc++; }
+  else if (direction === 'bottom-left') { nr++; nc--; }
+  else if (direction === 'bottom-right') { nr++; nc++; }
+
+  if (nr < 0 || nr >= solution.length || nc < 0 || nc >= solution[0].length) return false;
+  const neighbor = solution[nr][nc];
+
+  return neighbor && neighbor.type === 'piece' && neighbor.id === current.id;
+};
+
+const handleWheel = (event, type, index, colorType = null) => {
+  const maxVal = type === 'row' ? matrixData.value.cols.length : matrixData.value.rows.length;
+  let dataRef = type === 'row' ? matrixData.value.rows : matrixData.value.cols;
+
+  let currentVal = detectMode.value === 'single' ? dataRef[index] : dataRef[index][colorType];
+
+  if (event.deltaY < 0 && currentVal < maxVal) {
+    currentVal++;
+  } else if (event.deltaY > 0 && currentVal > 0) {
+    currentVal--;
+  } else {
+    return;
+  }
+
+  if (detectMode.value === 'single') {
+    dataRef[index] = currentVal;
+  } else {
+    dataRef[index][colorType] = currentVal;
+  }
+};
+
+const solvePuzzle = async () => {
+  currentStep.value = 'processing';
+  statusText.value = '正在利用剪枝回溯算法暴力推演...';
+  await nextTick();
+
+  setTimeout(() => {
+    const R = matrixData.value.rows.length;
+    const C = matrixData.value.cols.length;
+
+    // 1. 约束目标初始化
+    let targetRow = [], targetCol = [];
+    if (detectMode.value === 'single') {
+      targetRow = matrixData.value.rows.map(v => ({c1: v, c2: 0}));
+      targetCol = matrixData.value.cols.map(v => ({c1: v, c2: 0}));
+    } else {
+      targetRow = matrixData.value.rows.map(v => ({c1: v.c1, c2: v.c2}));
+      targetCol = matrixData.value.cols.map(v => ({c1: v.c1, c2: v.c2}));
+    }
+
+    let curRow = Array.from({length: R}, () => ({c1: 0, c2: 0}));
+    let curCol = Array.from({length: C}, () => ({c1: 0, c2: 0}));
+    let board = Array.from({length: R}, () => Array(C).fill(null));
+
+    // 2. 障碍物与预设方块入列，预占容量
+    for (let r = 0; r < R; r++) {
+      for (let c = 0; c < C; c++) {
+        let type = matrixData.value.grid[r][c];
+        if (type === 'obstacle') {
+          board[r][c] = { type: 'obstacle' };
+        } else if (type === 'preset' || type === 'preset-c1') {
+          board[r][c] = { type: 'preset-c1' };
+          curRow[r].c1++; curCol[c].c1++;
+        } else if (type === 'preset-c2') {
+          board[r][c] = { type: 'preset-c2' };
+          curRow[r].c2++; curCol[c].c2++;
+        }
+      }
+    }
+
+    const getRotations = (grid) => {
+      const rots = [];
+      let current = grid;
+      for(let i = 0; i < 4; i++) {
+        if (!rots.some(r => JSON.stringify(r) === JSON.stringify(current))) {
+          rots.push(current);
+        }
+        const rows = current.length;
+        const cols = current[0].length;
+        let next = Array.from({length: cols}, () => Array(rows).fill(0));
+        for(let r = 0; r < rows; r++) {
+          for(let c = 0; c < cols; c++) {
+            next[c][rows - 1 - r] = current[r][c];
+          }
+        }
+        current = next;
+      }
+      return rots;
+    };
+
+    // 3. 提取组件并应用启发式排序（面积大的优先放置，提早触发剪枝）
+    let pieces = recognizedPieces.value.map((p, idx) => {
+      let type = (detectMode.value === 'single') ? 'c1' : p.type;
+      let shapes = getRotations(p.grid);
+      let size = p.grid.flat().reduce((a, b) => a + b, 0);
+      return { id: idx, type, shapes, size };
+    });
+    pieces.sort((a, b) => b.size - a.size);
+
+    // 4. DFS 核心
+    const dfs = (pIdx) => {
+      if (pIdx === pieces.length) {
+        // 验证最终行列数量是否严丝合缝
+        for(let r=0; r<R; r++) if(curRow[r].c1 !== targetRow[r].c1 || curRow[r].c2 !== targetRow[r].c2) return false;
+        for(let c=0; c<C; c++) if(curCol[c].c1 !== targetCol[c].c1 || curCol[c].c2 !== targetCol[c].c2) return false;
+        return true;
+      }
+
+      let p = pieces[pIdx];
+      let pType = p.type;
+
+      for (let shape of p.shapes) {
+        let sr = shape.length;
+        let sc = shape[0].length;
+
+        for (let r = 0; r <= R - sr; r++) {
+          for (let c = 0; c <= C - sc; c++) {
+            let canPlace = true;
+            let rowAdd = new Array(sr).fill(0);
+            let colAdd = new Array(sc).fill(0);
+
+            // 预判一：碰撞检测
+            for (let ir = 0; ir < sr; ir++) {
+              for (let ic = 0; ic < sc; ic++) {
+                if (shape[ir][ic]) {
+                  if (board[r+ir][c+ic] !== null) { canPlace = false; break; }
+                  rowAdd[ir]++;
+                  colAdd[ic]++;
+                }
+              }
+              if (!canPlace) break;
+            }
+            if (!canPlace) continue;
+
+            // 预判二：行列容量极速剪枝
+            for (let ir = 0; ir < sr; ir++) {
+              if (pType === 'c1' && curRow[r+ir].c1 + rowAdd[ir] > targetRow[r+ir].c1) { canPlace = false; break; }
+              if (pType === 'c2' && curRow[r+ir].c2 + rowAdd[ir] > targetRow[r+ir].c2) { canPlace = false; break; }
+            }
+            if(!canPlace) continue;
+
+            for (let ic = 0; ic < sc; ic++) {
+              if (pType === 'c1' && curCol[c+ic].c1 + colAdd[ic] > targetCol[c+ic].c1) { canPlace = false; break; }
+              if (pType === 'c2' && curCol[c+ic].c2 + colAdd[ic] > targetCol[c+ic].c2) { canPlace = false; break; }
+            }
+            if (!canPlace) continue;
+
+            // 回溯：放置组件
+            for (let ir = 0; ir < sr; ir++) {
+              for (let ic = 0; ic < sc; ic++) {
+                if (shape[ir][ic]) {
+                  board[r+ir][c+ic] = { type: 'piece', id: p.id, colorType: pType };
+                  if(pType === 'c1') { curRow[r+ir].c1++; curCol[c+ic].c1++; }
+                  else { curRow[r+ir].c2++; curCol[c+ic].c2++; }
+                }
+              }
+            }
+
+            if (dfs(pIdx + 1)) return true;
+
+            // 回溯：撤销放置
+            for (let ir = 0; ir < sr; ir++) {
+              for (let ic = 0; ic < sc; ic++) {
+                if (shape[ir][ic]) {
+                  board[r+ir][c+ic] = null;
+                  if(pType === 'c1') { curRow[r+ir].c1--; curCol[c+ic].c1--; }
+                  else { curRow[r+ir].c2--; curCol[c+ic].c2--; }
+                }
+              }
+            }
+          }
+        }
+      }
+      return false;
+    };
+
+    let success = dfs(0);
+    if (success) {
+      matrixData.value.solution = board;
+      currentStep.value = 'solved';
+      statusText.value = '求解成功！';
+    } else {
+      currentStep.value = 'result';
+      statusText.value = '未找到可行解，可能存在识别错误。';
+      alert("未找到可行解，可能组件或网格识别存在误差。");
+    }
+  }, 100);
 };
 
 const handleReUpload = () => {
@@ -1005,7 +1219,7 @@ const handleReUpload = () => {
     </div>
 
     <div v-else-if="currentStep === 'processing'" class="preview-wrapper">
-      <img :src="imageUrl" ref="inputImage" style="display:none" />
+      <img :src="imageUrl" ref="inputImage" style="display:none" alt=""/>
       <div class="processing-content">
         <div class="tip-sub" style="font-size: 1.5rem; color: #409eff; margin-bottom: 20px;">
           {{ statusText || '准备分析...' }}
@@ -1017,7 +1231,7 @@ const handleReUpload = () => {
     </div>
 
     <div v-else-if="currentStep === 'debug'" class="preview-wrapper">
-      <img :src="imageUrl" ref="inputImage" style="display:none" />
+      <img :src="imageUrl" ref="inputImage" style="display:none" alt=""/>
       <div class="result-container">
         <div class="tip-sub" style="font-size: 1.2rem; color: #67c23a; margin-bottom: 15px; font-weight: bold;">
           {{ statusText }}
@@ -1031,7 +1245,7 @@ const handleReUpload = () => {
 
           <div v-if="piecesPreviewUrl" style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
             <span style="font-weight: bold; color: #409eff;">右侧组件识别预览</span>
-            <img :src="piecesPreviewUrl" style="max-height: 65vh; border: 2px solid #409eff; border-radius: 8px;" />
+            <img :src="piecesPreviewUrl" style="max-height: 65vh; border: 2px solid #409eff; border-radius: 8px;" alt=""/>
           </div>
         </div>
 
@@ -1052,26 +1266,31 @@ const handleReUpload = () => {
           <div class="matrix-board">
             <div class="matrix-row header-row">
               <div class="cell corner-cell"></div>
-              <div v-for="(colVal, i) in matrixData.cols" :key="'col-'+i" class="cell header-cell" style="display:flex; justify-content:center; align-items:center;">
-                <span v-if="detectMode === 'single'">{{ colVal }}</span>
+              <div v-for="(colVal, i) in matrixData.cols" :key="'col-sol-'+i" class="cell header-cell" style="display:flex; justify-content:center; align-items:center;">
+                <span v-if="detectMode === 'single'" class="adjustable-number" @wheel.prevent="handleWheel($event, 'col', i)">
+                  {{ matrixData.cols[i] }}
+                </span>
                 <div v-else style="display:flex; align-items:center; font-size: 1.1rem; gap: 4px;">
-                  <span style="color: #67c23a;">{{ colVal.c1 }}</span>
+                  <span style="color: #67c23a;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'col', i, 'c1')">{{ matrixData.cols[i].c1 }}</span>
                   <span style="color: #ccc; font-size: 0.9rem;">|</span>
-                  <span style="color: #409eff;">{{ colVal.c2 }}</span>
+                  <span style="color: #409eff;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'col', i, 'c2')">{{ matrixData.cols[i].c2 }}</span>
                 </div>
               </div>
             </div>
             <div v-for="(rowType, rIndex) in matrixData.grid" :key="'row-grid-'+rIndex" class="matrix-row">
               <div class="cell header-cell side-header" style="display:flex; justify-content:center; align-items:center;">
-                <span v-if="detectMode === 'single'">{{ matrixData.rows[rIndex] }}</span>
+              <span v-if="detectMode === 'single'" class="adjustable-number" @wheel.prevent="handleWheel($event, 'row', rIndex)">
+                {{ matrixData.rows[rIndex] }}
+              </span>
                 <div v-else style="display:flex; flex-direction:column; align-items:center; line-height:1.1; font-size: 1rem;">
-                  <span style="color: #409eff;">{{ matrixData.rows[rIndex].c2 }}</span>
-                  <span style="color: #67c23a;">{{ matrixData.rows[rIndex].c1 }}</span>
+                  <span style="color: #409eff;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'row', rIndex, 'c2')">{{ matrixData.rows[rIndex].c2 }}</span>
+                  <span style="color: #67c23a;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'row', rIndex, 'c1')">{{ matrixData.rows[rIndex].c1 }}</span>
                 </div>
               </div>
               <div v-for="(cellType, cIndex) in rowType"
                    :key="'cell-'+rIndex+'-'+cIndex"
                    :class="['cell', 'grid-cell', cellType + '-cell']">
+                <LockIcon v-if="cellType.startsWith('preset')" class="lock-icon-svg" />
               </div>
             </div>
           </div>
@@ -1092,7 +1311,70 @@ const handleReUpload = () => {
         </div>
 
         <div class="button-group" style="margin-top: 20px;">
-          <button class="btn btn-primary" @click="handleReUpload">上传新图片</button>
+          <button class="btn btn-primary" @click="solvePuzzle">开始求解</button>
+          <button class="btn btn-secondary" @click="handleReUpload">重新上传</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-else-if="currentStep === 'solved'" class="preview-wrapper">
+      <div class="result-container">
+        <div class="tip-sub" style="font-size: 1.2rem; color: #67c23a; margin-bottom: 15px; font-weight: bold;">
+          {{ statusText }}
+        </div>
+
+        <div class="matrix-board">
+          <div class="matrix-row header-row">
+            <div class="cell corner-cell"></div>
+            <div v-for="(colVal, i) in matrixData.cols" :key="'col-sol-'+i" class="cell header-cell" style="display:flex; justify-content:center; align-items:center;">
+                <span v-if="detectMode === 'single'" class="adjustable-number" @wheel.prevent="handleWheel($event, 'col', i)">
+                  {{ matrixData.cols[i] }}
+                </span>
+              <div v-else style="display:flex; align-items:center; font-size: 1.1rem; gap: 4px;">
+                <span style="color: #67c23a;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'col', i, 'c1')">{{ matrixData.cols[i].c1 }}</span>
+                <span style="color: #ccc; font-size: 0.9rem;">|</span>
+                <span style="color: #409eff;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'col', i, 'c2')">{{ matrixData.cols[i].c2 }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-for="(row, rIndex) in matrixData.solution" :key="'sol-row-'+rIndex" class="matrix-row">
+            <div class="cell header-cell side-header" style="display:flex; justify-content:center; align-items:center;">
+              <span v-if="detectMode === 'single'" class="adjustable-number" @wheel.prevent="handleWheel($event, 'row', rIndex)">
+                {{ matrixData.rows[rIndex] }}
+              </span>
+              <div v-else style="display:flex; flex-direction:column; align-items:center; line-height:1.1; font-size: 1rem;">
+                <span style="color: #409eff;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'row', rIndex, 'c2')">{{ matrixData.rows[rIndex].c2 }}</span>
+                <span style="color: #67c23a;" class="adjustable-number" @wheel.prevent="handleWheel($event, 'row', rIndex, 'c1')">{{ matrixData.rows[rIndex].c1 }}</span>
+              </div>
+            </div>
+            <div v-for="(cellData, cIndex) in row"
+                 :key="'sol-cell-'+rIndex+'-'+cIndex"
+                 :class="[
+                   'cell', 'grid-cell', getSolutionCellClass(cellData),
+                   {
+                     'conn-t': checkConnection(rIndex, cIndex, 'top'),
+                     'conn-b': checkConnection(rIndex, cIndex, 'bottom'),
+                     'conn-l': checkConnection(rIndex, cIndex, 'left'),
+                     'conn-r': checkConnection(rIndex, cIndex, 'right'),
+                     'conn-tr': checkConnection(rIndex, cIndex, 'top-right'),
+                     'conn-bl': checkConnection(rIndex, cIndex, 'bottom-left'),
+                     'conn-br': checkConnection(rIndex, cIndex, 'bottom-right')
+                   }
+                 ]">
+
+              <LockIcon v-if="cellData && (cellData.type === 'preset-c1' || cellData.type === 'preset-c2')"
+                        class="lock-icon-svg" />
+
+              <div v-if="checkConnection(rIndex, cIndex, 'right') && checkConnection(rIndex, cIndex, 'bottom') && checkConnection(rIndex, cIndex, 'bottom-right')"
+                   class="corner-bridge">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="button-group" style="margin-top: 20px;">
+          <button class="btn btn-secondary" @click="currentStep = 'result'">查看原选区</button>
+          <button class="btn btn-primary" @click="handleReUpload">完成并重置</button>
         </div>
       </div>
     </div>
