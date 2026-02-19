@@ -180,7 +180,7 @@ const detectMap = async (imgElement) => {
 
 const executeSingleOCR = async () => {
   currentStep.value = 'processing';
-  statusText.value = "正在初始化单色 OCR...";
+  statusText.value = "正在分析网格详情...";
 
   let src = cv.imread(inputImage.value);
   let matsToRelease = [src];
@@ -195,8 +195,7 @@ const executeSingleOCR = async () => {
     }
 
     const roiW = Math.floor(src.cols * 0.7);
-    let rect = new cv.Rect(0, 0, roiW, src.rows);
-    let roi = src.roi(rect);
+    let roi = src.roi(new cv.Rect(0, 0, roiW, src.rows));
     matsToRelease.push(roi);
 
     let hsv = new cv.Mat();
@@ -210,31 +209,55 @@ const executeSingleOCR = async () => {
     channels.delete();
     matsToRelease.push(gray);
 
+    let mask60 = new cv.Mat();
+    let mask100 = new cv.Mat();
+    cv.threshold(gray, mask60, 60, 255, cv.THRESH_BINARY);
+    cv.threshold(gray, mask100, 100, 255, cv.THRESH_BINARY);
+    matsToRelease.push(mask60, mask100);
+
     const rowValues = [];
     const colValues = [];
-    const total = savedSingleBoxes.value.rows.length + savedSingleBoxes.value.cols.length;
-    let count = 0;
 
     for (const box of savedSingleBoxes.value.rows) {
-      statusText.value = `正在识别单色行... ${++count}/${total}`;
       let digitRoi = gray.roi(box);
-      let val = await recognizeDigit(digitRoi, worker);
-      rowValues.push(val);
+      rowValues.push({ val: await recognizeDigit(digitRoi, worker), y: box.y + box.height/2 });
       digitRoi.delete();
     }
-
     for (const box of savedSingleBoxes.value.cols) {
-      statusText.value = `正在识别单色列... ${++count}/${total}`;
       let digitRoi = gray.roi(box);
-      let val = await recognizeDigit(digitRoi, worker);
-      colValues.push(val);
+      colValues.push({ val: await recognizeDigit(digitRoi, worker), x: box.x + box.width/2 });
       digitRoi.delete();
     }
 
-    matrixData.value = { rows: rowValues, cols: colValues };
-    currentStep.value = 'result';
-    statusText.value = "单色识别完成";
+    const finalGrid = [];
+    for (let r = 0; r < rowValues.length; r++) {
+      const rowData = [];
+      for (let c = 0; c < colValues.length; c++) {
+        const py = Math.floor(rowValues[r].y);
+        const px = Math.floor(colValues[c].x);
 
+        const val60 = mask60.ucharAt(py, px);
+        const val100 = mask100.ucharAt(py, px);
+
+        let type = 'normal';
+        if (val100 > 0) {
+          type = 'preset';
+        } else if (val60 > 0) {
+          type = 'obstacle';
+        }
+        rowData.push(type);
+      }
+      finalGrid.push(rowData);
+    }
+
+    matrixData.value = {
+      rows: rowValues.map(v => v.val),
+      cols: colValues.map(v => v.val),
+      grid: finalGrid
+    };
+
+    currentStep.value = 'result';
+    statusText.value = "单色地图深度识别完成";
   } catch (e) {
     console.error(e);
     statusText.value = "识别发生错误";
@@ -391,8 +414,12 @@ const executeDoubleOCR = async () => {
     matsToRelease.push(gray);
 
     let mask = new cv.Mat();
-    cv.threshold(gray, mask, 90, 255, cv.THRESH_BINARY);
-    matsToRelease.push(mask);
+    let mask70 = new cv.Mat();
+    let mask100 = new cv.Mat();
+    cv.threshold(gray, mask, 96, 255, cv.THRESH_BINARY);
+    cv.threshold(gray, mask70, 70, 255, cv.THRESH_BINARY);
+    cv.threshold(gray, mask100, 100, 255, cv.THRESH_BINARY);
+    matsToRelease.push(mask, mask70, mask100);
 
     let hKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(30, 1));
     let hLines = new cv.Mat();
@@ -402,6 +429,40 @@ const executeDoubleOCR = async () => {
     let vKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(1, 2));
     cv.morphologyEx(mask, mask, cv.MORPH_CLOSE, vKernel);
     matsToRelease.push(hKernel, hLines, vKernel);
+
+    const getMeanColor = (box) => {
+      let boxRoi = roi.roi(new cv.Rect(box.x, box.y, box.width, box.height));
+      let maskRoi = mask100.roi(new cv.Rect(box.x, box.y, box.width, box.height));
+      let mean = cv.mean(boxRoi, maskRoi);
+      boxRoi.delete();
+      maskRoi.delete();
+      return [mean[0], mean[1], mean[2]];
+    };
+
+    let color1 = getMeanColor(savedDoubleBoxes.value.cols[0].left);
+    let color2 = getMeanColor(savedDoubleBoxes.value.cols[0].right);
+
+    const toHex = (c) => c.toString(16).padStart(2, '0');
+    const rgbToHex = (color) => {
+      const r = Math.trunc(color[0]);
+      const g = Math.trunc(color[1]);
+      const b = Math.trunc(color[2]);
+      return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+    };
+    console.log(rgbToHex(color1), rgbToHex(color2));
+
+    const colorDist = (c1, c2) => {
+      //计算常规的 RGB 欧氏距离
+      const dist = Math.pow(c1[0] - c2[0], 2) + Math.pow(c1[1] - c2[1], 2) + Math.pow(c1[2] - c2[2], 2);
+      //找到颜色的主通道
+      const getMaxChannel = (c) => {
+        if (c[0] >= c[1] && c[0] >= c[2]) return 0;
+        if (c[1] >= c[0] && c[1] >= c[2]) return 1;
+        return 2;
+      };
+      //如果主通道不同，直接判定为不匹配
+      return getMaxChannel(c1) === getMaxChannel(c2) ? dist : dist + 1000000;
+    };
 
     const rowVals = [];
     const colVals = [];
@@ -438,7 +499,36 @@ const executeDoubleOCR = async () => {
       colVals.push({ c1: val1, c2: val2 });
     }
 
-    matrixData.value = { rows: rowVals, cols: colVals };
+    const finalGrid = [];
+    for (let r = 0; r < savedDoubleBoxes.value.rows.length; r++) {
+      const rowData = [];
+      for (let c = 0; c < savedDoubleBoxes.value.cols.length; c++) {
+        const py = Math.floor(savedDoubleBoxes.value.rows[r].centerY);
+        const px = Math.floor(savedDoubleBoxes.value.cols[c].centerX);
+
+        const val60 = mask70.ucharAt(py, px);
+        const val100 = mask100.ucharAt(py, px);
+
+        let type = 'normal';
+        if (val100 > 0) {
+          let cellPixel = roi.ucharPtr(py, px);
+          let cTarget = [cellPixel[0], cellPixel[1], cellPixel[2]];
+          console.log(`(${r},${c}):`, rgbToHex(cTarget));
+          console.log(colorDist(cTarget, color1), colorDist(cTarget, color2))
+          if (colorDist(cTarget, color1) < colorDist(cTarget, color2)) {
+            type = 'preset-c1';
+          } else {
+            type = 'preset-c2';
+          }
+        } else if (val60 > 0) {
+          type = 'obstacle';
+        }
+        rowData.push(type);
+      }
+      finalGrid.push(rowData);
+    }
+
+    matrixData.value = { rows: rowVals, cols: colVals, grid: finalGrid };
     currentStep.value = 'result';
     statusText.value = "双色解密完成";
   } catch (e) {
@@ -547,16 +637,17 @@ const handleReUpload = () => {
               </div>
             </div>
           </div>
-
-          <div v-for="(rowVal, rIndex) in matrixData.rows" :key="'row-'+rIndex" class="matrix-row">
+          <div v-for="(rowType, rIndex) in matrixData.grid" :key="'row-grid-'+rIndex" class="matrix-row">
             <div class="cell header-cell side-header" style="display:flex; justify-content:center; align-items:center;">
-              <span v-if="detectMode === 'single'">{{ rowVal }}</span>
+              <span v-if="detectMode === 'single'">{{ matrixData.rows[rIndex] }}</span>
               <div v-else style="display:flex; flex-direction:column; align-items:center; line-height:1.1; font-size: 1rem;">
-                <span style="color: #409eff;">{{ rowVal.c2 }}</span>
-                <span style="color: #67c23a;">{{ rowVal.c1 }}</span>
+                <span style="color: #409eff;">{{ matrixData.rows[rIndex].c2 }}</span>
+                <span style="color: #67c23a;">{{ matrixData.rows[rIndex].c1 }}</span>
               </div>
             </div>
-            <div v-for="(colVal, cIndex) in matrixData.cols" :key="'cell-'+rIndex+'-'+cIndex" class="cell grid-cell">
+            <div v-for="(cellType, cIndex) in rowType"
+                 :key="'cell-'+rIndex+'-'+cIndex"
+                 :class="['cell', 'grid-cell', cellType + '-cell']">
             </div>
           </div>
         </div>
