@@ -5,6 +5,7 @@ const imageUrl = ref('');
 const inputImage = ref(null);
 const fileInput = ref(null);
 const currentFile = ref(null);
+const piecesPreviewUrl = ref('');
 
 const detectMode = ref('single');
 const currentStep = ref('upload');
@@ -168,7 +169,179 @@ const detectMap = async (imgElement) => {
     currentStep.value = 'debug';
     await nextTick();
     cv.imshow(debugCanvas.value, debugMat);
-    statusText.value = `选区已提取。行:${rowNums.length} 列:${colNums.length}`;
+    statusText.value = `选区已提取：${rowNums.length}行${colNums.length}列`;
+
+    let rightRoiW = src.cols - roiW;
+    let piecesRoi = src.roi(new cv.Rect(roiW, 0, rightRoiW, src.rows));
+    let piecesDebugMat = piecesRoi.clone();
+    matsToRelease.push(piecesRoi, piecesDebugMat);
+
+    let pGray = new cv.Mat();
+    cv.cvtColor(piecesRoi, pGray, cv.COLOR_RGBA2GRAY);
+    matsToRelease.push(pGray);
+
+    let pMask = new cv.Mat();
+    cv.threshold(pGray, pMask, 80, 255, cv.THRESH_BINARY);
+    matsToRelease.push(pMask);
+
+    let pContours = new cv.MatVector();
+    let pHierarchy = new cv.Mat();
+    cv.findContours(pMask, pContours, pHierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    matsToRelease.push(pContours, pHierarchy);
+
+    let tempBoxes = [];
+    for (let i = 0; i < pContours.size(); ++i) {
+      let box = cv.boundingRect(pContours.get(i));
+      if (box.width > 10 && box.height > 10) {
+        tempBoxes.push(box);
+      }
+    }
+
+    let validBoxes = [];
+    if (tempBoxes.length > 0) {
+      let reasonableBoxes = tempBoxes.filter(b => {
+        let ratio = b.width / b.height;
+        return ratio > 0.15 && ratio < 6.5;
+      });
+
+      if (reasonableBoxes.length > 0) {
+        let maxDim = Math.max(...reasonableBoxes.map(b => Math.max(b.width, b.height)));
+
+        for (let box of reasonableBoxes) {
+          if (Math.max(box.width, box.height) > maxDim * 0.4) {
+            validBoxes.push(box);
+          }
+        }
+      }
+    }
+
+    for (let box of validBoxes) {
+      cv.rectangle(piecesDebugMat, new cv.Point(box.x, box.y), new cv.Point(box.x + box.width, box.y + box.height), [0, 255, 0, 255], 2);
+
+      let boxGray = pGray.roi(new cv.Rect(box.x, box.y, box.width, box.height));
+      let boxEdges = new cv.Mat();
+      cv.Canny(boxGray, boxEdges, 40, 120);
+
+      let possibleGrids = [];
+
+      for (let c = 1; c <= 5; c++) {
+        for (let r = 1; r <= 5; r++) {
+          let cellW = box.width / c;
+          let cellH = box.height / r;
+          let ratio = cellW / cellH;
+
+          if (ratio > 0.6 && ratio < 1.6) {
+            let isPure = true;
+            let k = 0;
+
+            for (let i = 0; i < c; i++) {
+              for (let j = 0; j < r; j++) {
+                let cx = Math.floor(i * cellW);
+                let cy = Math.floor(j * cellH);
+                let cw = Math.floor(cellW);
+                let ch = Math.floor(cellH);
+
+                let shrink = 4;
+                let innerW = cw - shrink * 2;
+                let innerH = ch - shrink * 2;
+
+                if (innerW > 2 && innerH > 2) {
+                  let absCx = box.x + cx;
+                  let absCy = box.y + cy;
+                  let cellRoi = pMask.roi(new cv.Rect(absCx + shrink, absCy + shrink, innerW, innerH));
+                  let whiteCount = cv.countNonZero(cellRoi);
+                  let fillRatio = whiteCount / (innerW * innerH);
+                  cellRoi.delete();
+
+                  if (fillRatio > 0.80) {
+                    k++;
+                  } else if (fillRatio < 0.20) {
+                  } else {
+                    isPure = false;
+                    break;
+                  }
+                } else {
+                  isPure = false; break;
+                }
+              }
+              if (!isPure) break;
+            }
+
+            if (isPure && k > 0) {
+              let edgeCount = 0;
+              let totalLen = 0;
+
+              for(let i = 1; i < c; i++){
+                let px = Math.floor(i * cellW);
+                for(let py = 0; py < box.height; py++){
+                  if (boxEdges.ucharAt(py, px) > 0 ||
+                      (px > 0 && boxEdges.ucharAt(py, px-1) > 0) ||
+                      (px < box.width-1 && boxEdges.ucharAt(py, px+1) > 0)) {
+                    edgeCount++;
+                  }
+                  totalLen++;
+                }
+              }
+              for(let j = 1; j < r; j++){
+                let py = Math.floor(j * cellH);
+                for(let px = 0; px < box.width; px++){
+                  if (boxEdges.ucharAt(py, px) > 0 ||
+                      (py > 0 && boxEdges.ucharAt(py-1, px) > 0) ||
+                      (py < box.height-1 && boxEdges.ucharAt(py+1, px) > 0)) {
+                    edgeCount++;
+                  }
+                  totalLen++;
+                }
+              }
+
+              let seamScore = totalLen > 0 ? (edgeCount / totalLen) : 0;
+              possibleGrids.push({ c, r, k, total: c * r, seamScore });
+            }
+          }
+        }
+      }
+
+      boxGray.delete();
+      boxEdges.delete();
+
+      let bestC = 1, bestR = 1;
+      if (possibleGrids.length > 0) {
+        possibleGrids.sort((a, b) => b.seamScore - a.seamScore);
+
+        if (possibleGrids[0].seamScore > 0.15) {
+          bestC = possibleGrids[0].c;
+          bestR = possibleGrids[0].r;
+        } else {
+          possibleGrids.sort((a, b) => a.total - b.total);
+          bestC = possibleGrids[0].c;
+          bestR = possibleGrids[0].r;
+        }
+      } else {
+        bestC = Math.max(1, Math.round(box.width / Math.min(box.width, box.height)));
+        bestR = Math.max(1, Math.round(box.height / Math.min(box.width, box.height)));
+      }
+
+      let curUnitW = box.width / bestC;
+      let curUnitH = box.height / bestR;
+
+      for (let r = 0; r < bestR; r++) {
+        for (let c = 0; c < bestC; c++) {
+          let absCx = Math.floor(box.x + c * curUnitW + curUnitW / 2);
+          let absCy = Math.floor(box.y + r * curUnitH + curUnitH / 2);
+
+          let maskVal = pMask.ucharAt(absCy, absCx);
+          if (maskVal > 128) {
+            cv.circle(piecesDebugMat, new cv.Point(absCx, absCy), 5, [255, 0, 0, 255], -1);
+          } else {
+            cv.circle(piecesDebugMat, new cv.Point(absCx, absCy), 2, [150, 150, 150, 255], -1);
+          }
+        }
+      }
+    }
+
+    let tempCanvas = document.createElement('canvas');
+    cv.imshow(tempCanvas, piecesDebugMat);
+    piecesPreviewUrl.value = tempCanvas.toDataURL('image/jpeg');
 
   } catch (e) {
     console.error(e);
@@ -209,11 +382,11 @@ const executeSingleOCR = async () => {
     channels.delete();
     matsToRelease.push(gray);
 
-    let mask60 = new cv.Mat();
+    let mask70 = new cv.Mat();
     let mask100 = new cv.Mat();
-    cv.threshold(gray, mask60, 60, 255, cv.THRESH_BINARY);
+    cv.threshold(gray, mask70, 70, 255, cv.THRESH_BINARY);
     cv.threshold(gray, mask100, 100, 255, cv.THRESH_BINARY);
-    matsToRelease.push(mask60, mask100);
+    matsToRelease.push(mask70, mask100);
 
     const rowValues = [];
     const colValues = [];
@@ -236,7 +409,7 @@ const executeSingleOCR = async () => {
         const py = Math.floor(rowValues[r].y);
         const px = Math.floor(colValues[c].x);
 
-        const val60 = mask60.ucharAt(py, px);
+        const val60 = mask70.ucharAt(py, px);
         const val100 = mask100.ucharAt(py, px);
 
         let type = 'normal';
@@ -370,11 +543,219 @@ const detectDoubleMapDebug = async (imgElement) => {
     //保存坐标供后续 OCR 使用
     savedDoubleBoxes.value = { rows: finalRowPairs, cols: finalColPairs };
 
+    //组件提取与颜色分类
+    let mask100 = new cv.Mat();
+    cv.threshold(gray, mask100, 100, 255, cv.THRESH_BINARY);
+    matsToRelease.push(mask100);
+
+    const getMeanColor = (box) => {
+      let boxRoi = roi.roi(new cv.Rect(box.x, box.y, box.width, box.height));
+      let maskRoi = mask100.roi(new cv.Rect(box.x, box.y, box.width, box.height));
+      let mean = cv.mean(boxRoi, maskRoi);
+      boxRoi.delete();
+      maskRoi.delete();
+      return [mean[0], mean[1], mean[2]];
+    };
+
+    let color1 = finalColPairs.length > 0 ? getMeanColor(finalColPairs[0].left) : [0,255,0];
+    let color2 = finalColPairs.length > 0 ? getMeanColor(finalColPairs[0].right) : [0,0,255];
+
+    const colorDist = (c1, c2) => {
+      const dist = Math.pow(c1[0] - c2[0], 2) + Math.pow(c1[1] - c2[1], 2) + Math.pow(c1[2] - c2[2], 2);
+      const getMaxChannel = (c) => {
+        if (c[0] >= c[1] && c[0] >= c[2]) return 0;
+        if (c[1] >= c[0] && c[1] >= c[2]) return 1;
+        return 2;
+      };
+      return getMaxChannel(c1) === getMaxChannel(c2) ? dist : dist + 1000000;
+    };
+
+    let rightRoiW = src.cols - roiW;
+    let piecesRoi = src.roi(new cv.Rect(roiW, 0, rightRoiW, src.rows));
+    let piecesDebugMat = piecesRoi.clone();
+    matsToRelease.push(piecesRoi, piecesDebugMat);
+
+    let pGray = new cv.Mat();
+    cv.cvtColor(piecesRoi, pGray, cv.COLOR_RGBA2GRAY);
+    matsToRelease.push(pGray);
+
+    let pMask = new cv.Mat();
+    cv.threshold(pGray, pMask, 80, 255, cv.THRESH_BINARY);
+    matsToRelease.push(pMask);
+
+    let pContours = new cv.MatVector();
+    let pHierarchy = new cv.Mat();
+    cv.findContours(pMask, pContours, pHierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    matsToRelease.push(pContours, pHierarchy);
+
+    let tempBoxes = [];
+    for (let i = 0; i < pContours.size(); ++i) {
+      let box = cv.boundingRect(pContours.get(i));
+      if (box.width > 10 && box.height > 10) {
+        tempBoxes.push(box);
+      }
+    }
+
+    let validBoxes = [];
+    if (tempBoxes.length > 0) {
+      let reasonableBoxes = tempBoxes.filter(b => {
+        let ratio = b.width / b.height;
+        return ratio > 0.15 && ratio < 6.5;
+      });
+
+      if (reasonableBoxes.length > 0) {
+        let maxDim = Math.max(...reasonableBoxes.map(b => Math.max(b.width, b.height)));
+
+        for (let box of reasonableBoxes) {
+          if (Math.max(box.width, box.height) > maxDim * 0.4) {
+            validBoxes.push(box);
+          }
+        }
+      }
+    }
+
+    for (let box of validBoxes) {
+      cv.rectangle(piecesDebugMat, new cv.Point(box.x, box.y), new cv.Point(box.x + box.width, box.y + box.height), [255, 255, 255, 255], 2);
+
+      let boxGray = pGray.roi(new cv.Rect(box.x, box.y, box.width, box.height));
+      let boxEdges = new cv.Mat();
+      cv.Canny(boxGray, boxEdges, 40, 120);
+
+      let possibleGrids = [];
+
+      for (let c = 1; c <= 5; c++) {
+        for (let r = 1; r <= 5; r++) {
+          let cellW = box.width / c;
+          let cellH = box.height / r;
+          let ratio = cellW / cellH;
+
+          if (ratio > 0.6 && ratio < 1.6) {
+            let isPure = true;
+            let k = 0;
+
+            for (let i = 0; i < c; i++) {
+              for (let j = 0; j < r; j++) {
+                let cx = Math.floor(i * cellW);
+                let cy = Math.floor(j * cellH);
+                let cw = Math.floor(cellW);
+                let ch = Math.floor(cellH);
+
+                let shrink = 4;
+                let innerW = cw - shrink * 2;
+                let innerH = ch - shrink * 2;
+
+                if (innerW > 2 && innerH > 2) {
+                  let absCx = box.x + cx;
+                  let absCy = box.y + cy;
+                  let cellRoi = pMask.roi(new cv.Rect(absCx + shrink, absCy + shrink, innerW, innerH));
+                  let whiteCount = cv.countNonZero(cellRoi);
+                  let fillRatio = whiteCount / (innerW * innerH);
+                  cellRoi.delete();
+
+                  if (fillRatio > 0.80) {
+                    k++;
+                  } else if (fillRatio < 0.20) {
+                  } else {
+                    isPure = false;
+                    break;
+                  }
+                } else {
+                  isPure = false; break;
+                }
+              }
+              if (!isPure) break;
+            }
+
+            if (isPure && k > 0) {
+              let edgeCount = 0;
+              let totalLen = 0;
+
+              for(let i = 1; i < c; i++){
+                let px = Math.floor(i * cellW);
+                for(let py = 0; py < box.height; py++){
+                  if (boxEdges.ucharAt(py, px) > 0 ||
+                      (px > 0 && boxEdges.ucharAt(py, px-1) > 0) ||
+                      (px < box.width-1 && boxEdges.ucharAt(py, px+1) > 0)) {
+                    edgeCount++;
+                  }
+                  totalLen++;
+                }
+              }
+              for(let j = 1; j < r; j++){
+                let py = Math.floor(j * cellH);
+                for(let px = 0; px < box.width; px++){
+                  if (boxEdges.ucharAt(py, px) > 0 ||
+                      (py > 0 && boxEdges.ucharAt(py-1, px) > 0) ||
+                      (py < box.height-1 && boxEdges.ucharAt(py+1, px) > 0)) {
+                    edgeCount++;
+                  }
+                  totalLen++;
+                }
+              }
+
+              let seamScore = totalLen > 0 ? (edgeCount / totalLen) : 0;
+              possibleGrids.push({ c, r, k, total: c * r, seamScore });
+            }
+          }
+        }
+      }
+
+      boxGray.delete();
+      boxEdges.delete();
+
+      let bestC = 1, bestR = 1;
+      if (possibleGrids.length > 0) {
+        possibleGrids.sort((a, b) => b.seamScore - a.seamScore);
+        if (possibleGrids[0].seamScore > 0.15) {
+          bestC = possibleGrids[0].c;
+          bestR = possibleGrids[0].r;
+        } else {
+          possibleGrids.sort((a, b) => a.total - b.total);
+          bestC = possibleGrids[0].c;
+          bestR = possibleGrids[0].r;
+        }
+      } else {
+        bestC = Math.max(1, Math.round(box.width / Math.min(box.width, box.height)));
+        bestR = Math.max(1, Math.round(box.height / Math.min(box.width, box.height)));
+      }
+
+      let curUnitW = box.width / bestC;
+      let curUnitH = box.height / bestR;
+
+      for (let r = 0; r < bestR; r++) {
+        for (let c = 0; c < bestC; c++) {
+          let absCx = Math.floor(box.x + c * curUnitW + curUnitW / 2);
+          let absCy = Math.floor(box.y + r * curUnitH + curUnitH / 2);
+
+          let maskVal = pMask.ucharAt(absCy, absCx);
+          if (maskVal > 128) {
+            let cellPixel = piecesRoi.ucharPtr(absCy, absCx);
+            let cTarget = [cellPixel[0], cellPixel[1], cellPixel[2]];
+
+            //比较并绘制不同颜色的点
+            if (colorDist(cTarget, color1) < colorDist(cTarget, color2)) {
+              //属于颜色1
+              cv.circle(piecesDebugMat, new cv.Point(absCx, absCy), 5, [0, 255, 0, 255], -1);
+            } else {
+              //属于颜色2
+              cv.circle(piecesDebugMat, new cv.Point(absCx, absCy), 5, [0, 0, 255, 255], -1);
+            }
+          } else {
+            //缺角背景
+            cv.circle(piecesDebugMat, new cv.Point(absCx, absCy), 2, [150, 150, 150, 255], -1);
+          }
+        }
+      }
+    }
+    let tempCanvas = document.createElement('canvas');
+    cv.imshow(tempCanvas, piecesDebugMat);
+    piecesPreviewUrl.value = tempCanvas.toDataURL('image/jpeg');
+
     //Debug
     currentStep.value = 'debug';
     await nextTick();
     cv.imshow(debugCanvas.value, debugMat);
-    statusText.value = `选区已提取。行对数:${finalRowPairs.length} 列对数:${finalColPairs.length}`;
+    statusText.value = `选区已提取：${finalRowPairs.length}行${finalColPairs.length}列`;
 
   } catch (e) {
     console.error(e);
@@ -560,6 +941,7 @@ const runAnalysis = async () => {
 const handleReUpload = () => {
   imageUrl.value = '';
   currentFile.value = null;
+  piecesPreviewUrl.value = '';
   currentStep.value = 'upload';
   statusText.value = '';
   if (fileInput.value) {
@@ -610,7 +992,17 @@ const handleReUpload = () => {
           {{ statusText }}
         </div>
 
-        <canvas ref="debugCanvas" class="output-canvas"></canvas>
+        <div style="display: flex; gap: 40px; align-items: flex-start; justify-content: center; width: 100%;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+            <span style="font-weight: bold; color: #409eff;">左侧网格选区</span>
+            <canvas ref="debugCanvas" class="output-canvas" style="max-height: 65vh;"></canvas>
+          </div>
+
+          <div v-if="piecesPreviewUrl" style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+            <span style="font-weight: bold; color: #409eff;">右侧组件识别预览</span>
+            <img :src="piecesPreviewUrl" style="max-height: 65vh; border: 2px solid #409eff; border-radius: 8px;" />
+          </div>
+        </div>
 
         <div class="button-group" style="margin-top: 20px;">
           <button class="btn btn-primary" @click="detectMode === 'single' ? executeSingleOCR() : executeDoubleOCR()">确认选区并识别</button>
