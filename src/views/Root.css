@@ -421,6 +421,7 @@ body {
         max-width: 100% !important;
         height: auto !important;
         max-height: 35vh !important;
+        object-fit: contain !important;
     }
 
     .upload-placeholder {

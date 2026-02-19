@@ -59,9 +59,11 @@ const calculateDynamicBounds = (src) => {
 
   for (let i = 1; i < boxes.length; i++) {
     let gap = boxes[i].x - (boxes[i - 1].x + boxes[i - 1].width);
-    if (gap > maxGap && gap > src.cols * 0.05) {
+    let gapCenterX = boxes[i - 1].x + boxes[i - 1].width + Math.floor(gap / 2);
+
+    if (gap > maxGap && gap > src.cols * 0.05 && gapCenterX > src.cols * 0.4) {
       maxGap = gap;
-      splitX = boxes[i - 1].x + boxes[i - 1].width + Math.floor(gap / 2);
+      splitX = gapCenterX;
     }
   }
 
