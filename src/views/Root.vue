@@ -15,6 +15,7 @@ const debugCanvas = ref(null);
 
 const savedSingleBoxes = ref({ rows: [], cols: [] });
 const savedDoubleBoxes = ref({ rows: [], cols: [] });
+const recognizedPieces = ref([]);
 
 let worker = null;
 
@@ -105,6 +106,7 @@ const detectMap = async (imgElement) => {
 
   try {
     statusText.value = "正在提取单色网格位置...";
+    recognizedPieces.value = [];
     const roiW = Math.floor(src.cols * 0.7);
     let rect = new cv.Rect(0, 0, roiW, src.rows);
     let roi = src.roi(rect);
@@ -215,6 +217,13 @@ const detectMap = async (imgElement) => {
       }
     }
 
+    validBoxes.sort((a, b) => {
+      if (Math.abs(a.y - b.y) < 20) {
+        return a.x - b.x;
+      }
+      return a.y - b.y;
+    });
+
     for (let box of validBoxes) {
       cv.rectangle(piecesDebugMat, new cv.Point(box.x, box.y), new cv.Point(box.x + box.width, box.y + box.height), [0, 255, 0, 255], 2);
 
@@ -324,7 +333,9 @@ const detectMap = async (imgElement) => {
       let curUnitW = box.width / bestC;
       let curUnitH = box.height / bestR;
 
+      let pieceGrid = [];
       for (let r = 0; r < bestR; r++) {
+        let rowData = [];
         for (let c = 0; c < bestC; c++) {
           let absCx = Math.floor(box.x + c * curUnitW + curUnitW / 2);
           let absCy = Math.floor(box.y + r * curUnitH + curUnitH / 2);
@@ -332,11 +343,15 @@ const detectMap = async (imgElement) => {
           let maskVal = pMask.ucharAt(absCy, absCx);
           if (maskVal > 128) {
             cv.circle(piecesDebugMat, new cv.Point(absCx, absCy), 5, [255, 0, 0, 255], -1);
+            rowData.push(1);
           } else {
             cv.circle(piecesDebugMat, new cv.Point(absCx, absCy), 2, [150, 150, 150, 255], -1);
+            rowData.push(0);
           }
         }
+        pieceGrid.push(rowData);
       }
+      recognizedPieces.value.push({ grid: pieceGrid, type: 'single' });
     }
 
     let tempCanvas = document.createElement('canvas');
@@ -446,6 +461,7 @@ const detectDoubleMapDebug = async (imgElement) => {
   statusText.value = "提取双色网格位置...";
 
   try {
+    recognizedPieces.value = [];
     const roiW = Math.floor(src.cols * 0.7);
     let rect = new cv.Rect(0, 0, roiW, src.rows);
     let roi = src.roi(rect);
@@ -614,6 +630,13 @@ const detectDoubleMapDebug = async (imgElement) => {
       }
     }
 
+    validBoxes.sort((a, b) => {
+      if (Math.abs(a.y - b.y) < 20) {
+        return a.x - b.x;
+      }
+      return a.y - b.y;
+    });
+
     for (let box of validBoxes) {
       cv.rectangle(piecesDebugMat, new cv.Point(box.x, box.y), new cv.Point(box.x + box.width, box.y + box.height), [255, 255, 255, 255], 2);
 
@@ -722,7 +745,12 @@ const detectDoubleMapDebug = async (imgElement) => {
       let curUnitW = box.width / bestC;
       let curUnitH = box.height / bestR;
 
+      let pieceGrid = [];
+      let c1Votes = 0;
+      let c2Votes = 0;
+
       for (let r = 0; r < bestR; r++) {
+        let rowData = [];
         for (let c = 0; c < bestC; c++) {
           let absCx = Math.floor(box.x + c * curUnitW + curUnitW / 2);
           let absCy = Math.floor(box.y + r * curUnitH + curUnitH / 2);
@@ -732,20 +760,23 @@ const detectDoubleMapDebug = async (imgElement) => {
             let cellPixel = piecesRoi.ucharPtr(absCy, absCx);
             let cTarget = [cellPixel[0], cellPixel[1], cellPixel[2]];
 
-            //比较并绘制不同颜色的点
             if (colorDist(cTarget, color1) < colorDist(cTarget, color2)) {
-              //属于颜色1
               cv.circle(piecesDebugMat, new cv.Point(absCx, absCy), 5, [0, 255, 0, 255], -1);
+              c1Votes++;
             } else {
-              //属于颜色2
               cv.circle(piecesDebugMat, new cv.Point(absCx, absCy), 5, [0, 0, 255, 255], -1);
+              c2Votes++;
             }
+            rowData.push(1);
           } else {
-            //缺角背景
             cv.circle(piecesDebugMat, new cv.Point(absCx, absCy), 2, [150, 150, 150, 255], -1);
+            rowData.push(0);
           }
         }
+        pieceGrid.push(rowData);
       }
+      let pieceType = c1Votes >= c2Votes ? 'c1' : 'c2';
+      recognizedPieces.value.push({ grid: pieceGrid, type: pieceType });
     }
     let tempCanvas = document.createElement('canvas');
     cv.imshow(tempCanvas, piecesDebugMat);
@@ -1017,29 +1048,45 @@ const handleReUpload = () => {
           {{ statusText }}
         </div>
 
-        <div class="matrix-board">
-          <div class="matrix-row header-row">
-            <div class="cell corner-cell"></div>
-            <div v-for="(colVal, i) in matrixData.cols" :key="'col-'+i" class="cell header-cell" style="display:flex; justify-content:center; align-items:center;">
-              <span v-if="detectMode === 'single'">{{ colVal }}</span>
-              <div v-else style="display:flex; align-items:center; font-size: 1.1rem; gap: 4px;">
-                <span style="color: #67c23a;">{{ colVal.c1 }}</span>
-                <span style="color: #ccc; font-size: 0.9rem;">|</span>
-                <span style="color: #409eff;">{{ colVal.c2 }}</span>
+        <div style="display: flex; gap: 40px; align-items: flex-start; justify-content: center; width: 100%;">
+          <div class="matrix-board">
+            <div class="matrix-row header-row">
+              <div class="cell corner-cell"></div>
+              <div v-for="(colVal, i) in matrixData.cols" :key="'col-'+i" class="cell header-cell" style="display:flex; justify-content:center; align-items:center;">
+                <span v-if="detectMode === 'single'">{{ colVal }}</span>
+                <div v-else style="display:flex; align-items:center; font-size: 1.1rem; gap: 4px;">
+                  <span style="color: #67c23a;">{{ colVal.c1 }}</span>
+                  <span style="color: #ccc; font-size: 0.9rem;">|</span>
+                  <span style="color: #409eff;">{{ colVal.c2 }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-for="(rowType, rIndex) in matrixData.grid" :key="'row-grid-'+rIndex" class="matrix-row">
+              <div class="cell header-cell side-header" style="display:flex; justify-content:center; align-items:center;">
+                <span v-if="detectMode === 'single'">{{ matrixData.rows[rIndex] }}</span>
+                <div v-else style="display:flex; flex-direction:column; align-items:center; line-height:1.1; font-size: 1rem;">
+                  <span style="color: #409eff;">{{ matrixData.rows[rIndex].c2 }}</span>
+                  <span style="color: #67c23a;">{{ matrixData.rows[rIndex].c1 }}</span>
+                </div>
+              </div>
+              <div v-for="(cellType, cIndex) in rowType"
+                   :key="'cell-'+rIndex+'-'+cIndex"
+                   :class="['cell', 'grid-cell', cellType + '-cell']">
               </div>
             </div>
           </div>
-          <div v-for="(rowType, rIndex) in matrixData.grid" :key="'row-grid-'+rIndex" class="matrix-row">
-            <div class="cell header-cell side-header" style="display:flex; justify-content:center; align-items:center;">
-              <span v-if="detectMode === 'single'">{{ matrixData.rows[rIndex] }}</span>
-              <div v-else style="display:flex; flex-direction:column; align-items:center; line-height:1.1; font-size: 1rem;">
-                <span style="color: #409eff;">{{ matrixData.rows[rIndex].c2 }}</span>
-                <span style="color: #67c23a;">{{ matrixData.rows[rIndex].c1 }}</span>
+
+          <div class="pieces-board">
+            <div class="pieces-grid">
+              <div v-for="(piece, pIndex) in recognizedPieces" :key="'piece-'+pIndex" class="piece-box">
+                <div class="piece-render">
+                  <div v-for="(rData, rIdx) in piece.grid" :key="'pr-'+rIdx" class="piece-row">
+                    <div v-for="(cData, cIdx) in rData" :key="'pc-'+cIdx"
+                         :class="['piece-cell', cData ? (detectMode === 'single' ? 'piece-single' : 'piece-' + piece.type) : 'piece-empty']">
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div v-for="(cellType, cIndex) in rowType"
-                 :key="'cell-'+rIndex+'-'+cIndex"
-                 :class="['cell', 'grid-cell', cellType + '-cell']">
             </div>
           </div>
         </div>
