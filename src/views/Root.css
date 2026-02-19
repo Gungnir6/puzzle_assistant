@@ -1,6 +1,3 @@
-/* =========================================
-   明亮清爽风格 UI (纯净色彩修正版)
-   ========================================= */
 body {
     background-color: #f0f2f5;
     color: #303133;
@@ -68,7 +65,6 @@ body {
     border: none;
 }
 
-/* 按钮使用干净明亮的黄色 */
 .btn-primary {
     background-color: #ffb800;
     color: #ffffff;
@@ -220,7 +216,6 @@ body {
 .corner-cell { background-color: transparent; }
 .normal-cell { background-color: #ffffff !important; }
 
-/* 恢复纯净的绿色和蓝色方块 */
 .preset-c1-cell, .preset-cell {
     background-color: #67c23a !important;
     border-color: #529b2e !important;
@@ -290,7 +285,6 @@ body {
     color: #ffffff;
 }
 
-/* 完美无缝拼接逻辑 */
 .conn-t { border-top-width: 0 !important; border-top-left-radius: 0 !important; border-top-right-radius: 0 !important; }
 .conn-b { border-bottom-width: 0 !important; border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
 .conn-l { border-left-width: 0 !important; border-top-left-radius: 0 !important; border-bottom-left-radius: 0 !important; }
@@ -322,7 +316,6 @@ body {
 .cell-piece-c2.conn-b::before { background-color: #409eff; border-left-color: #8cc5ff; border-right-color: #8cc5ff; }
 .cell-piece-c2 .corner-bridge { background-color: #409eff; }
 
-/* SVG图标重置色彩，保持白色高对比 */
 .lock-icon-svg {
     width: 20px;
     height: 20px;
@@ -341,7 +334,6 @@ body {
     padding: 2px 6px;
     border-radius: 4px;
     transition: all 0.2s ease;
-    /* 设置单色模式下的数字颜色为绿色 */
     color: #67c23a;
 }
 
@@ -350,9 +342,6 @@ body {
     transform: scale(1.1);
 }
 
-/* =========================================
-   模式切换开关 (Toggle Switch)
-   ========================================= */
 .mode-toggle-wrapper {
     display: flex;
     align-items: center;
@@ -382,14 +371,14 @@ body {
     width: 54px;
     height: 28px;
     border-radius: 14px;
-    background-color: #67c23a; /* 单色模式按钮恢复为绿色 */
+    background-color: #67c23a;
     position: relative;
     cursor: pointer;
     transition: all 0.3s ease;
 }
 
 .toggle-switch.double {
-    background-color: #409eff; /* 双色模式按钮恢复为蓝色 */
+    background-color: #409eff;
 }
 
 .toggle-circle {
