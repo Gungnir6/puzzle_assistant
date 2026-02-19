@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onUnmounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import LockIcon from '@/assets/lock.svg';
 
 const imageUrl = ref('');
@@ -13,6 +13,7 @@ const currentStep = ref('upload');
 const matrixData = ref({ rows: [], cols: [] });
 const statusText = ref('');
 const debugCanvas = ref(null);
+const isDragging = ref(false);
 
 const savedSingleBoxes = ref({ rows: [], cols: [] });
 const savedDoubleBoxes = ref({ rows: [], cols: [] });
@@ -75,12 +76,11 @@ const triggerUpload = () => {
   if (fileInput.value) fileInput.value.click()
 }
 
-const handleFileChange = (event) => {
-  const file = event.target.files[0]
+const processFile = (file) => {
   if (file && file.type.startsWith('image/')) {
-    currentFile.value = file
-    if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
-    imageUrl.value = URL.createObjectURL(file)
+    currentFile.value = file;
+    if (imageUrl.value) URL.revokeObjectURL(imageUrl.value);
+    imageUrl.value = URL.createObjectURL(file);
 
     currentStep.value = 'processing';
     matrixData.value = { rows: [], cols: [] };
@@ -89,9 +89,42 @@ const handleFileChange = (event) => {
       runAnalysis();
     }, 50);
   }
-}
+};
+
+//点击上传
+const handleFileChange = (event) => {
+  const file = event.target.files[0];
+  if (file) processFile(file);
+};
+
+//拖拽上传
+const handleDrop = (event) => {
+  isDragging.value = false;
+  const file = event.dataTransfer.files[0];
+  if (file) processFile(file);
+};
+
+//Ctrl+V上传
+const handlePaste = (event) => {
+  //只有在初始上传界面才响应粘贴事件
+  if (currentStep.value !== 'upload') return;
+
+  const items = event.clipboardData.items;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      const file = items[i].getAsFile();
+      processFile(file);
+      break; //只取第一张图片
+    }
+  }
+};
+
+onMounted(() => {
+  window.addEventListener('paste', handlePaste);
+});
 
 onUnmounted(async () => {
+  window.removeEventListener('paste', handlePaste);
   if (worker) {
     await worker.terminate();
   }
@@ -1309,7 +1342,14 @@ const handleReUpload = () => {
   <div class="upload-container">
     <input type="file" ref="fileInput" accept="image/*" @change="handleFileChange" style="display: none" />
 
-    <div v-if="currentStep === 'upload'" class="upload-placeholder">
+    <div v-if="currentStep === 'upload'"
+         class="upload-placeholder"
+         :class="{ 'is-dragging': isDragging }"
+         @dragover.prevent="isDragging = true"
+         @dragenter.prevent="isDragging = true"
+         @dragleave.prevent="isDragging = false"
+         @drop.prevent="handleDrop">
+
       <div class="tip">故障机器人修复工具</div>
 
       <div class="mode-selector" style="display: flex; gap: 20px; margin-bottom: 10px;">
@@ -1325,7 +1365,7 @@ const handleReUpload = () => {
         <span class="corner t-l"></span><span class="corner t-r"></span>
         <span class="corner b-l"></span><span class="corner b-r"></span>
       </div>
-      <div class="tip-sub">点击上传图片</div>
+      <div class="tip-sub">点击、拖拽或按 Ctrl+V 粘贴图片</div>
     </div>
 
     <div v-else-if="currentStep === 'processing'" class="preview-wrapper">
