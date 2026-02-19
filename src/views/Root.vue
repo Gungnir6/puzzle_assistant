@@ -20,6 +20,57 @@ const recognizedPieces = ref([]);
 
 let worker = null;
 
+const calculateDynamicBounds = (src) => {
+  let hsv = new cv.Mat();
+  cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
+  cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+  let channels = new cv.MatVector();
+  cv.split(hsv, channels);
+  let sat = channels.get(1);
+  let val = channels.get(2);
+
+  let mask = new cv.Mat();
+  let satMask = new cv.Mat();
+  let valMask = new cv.Mat();
+  cv.threshold(sat, satMask, 40, 255, cv.THRESH_BINARY);
+  cv.threshold(val, valMask, 80, 255, cv.THRESH_BINARY);
+  cv.bitwise_and(satMask, valMask, mask);
+
+  let contours = new cv.MatVector();
+  let hierarchy = new cv.Mat();
+  cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+  let boxes = [];
+  for (let i = 0; i < contours.size(); ++i) {
+    let box = cv.boundingRect(contours.get(i));
+    if (box.width > 8 && box.height > 8 && box.width < src.cols * 0.3) {
+      boxes.push(box);
+    }
+  }
+
+  satMask.delete(); valMask.delete(); mask.delete();
+  contours.delete(); hierarchy.delete(); channels.delete(); hsv.delete(); sat.delete(); val.delete();
+
+  if (boxes.length < 5) return { roiW: Math.floor(src.cols * 0.7), gridMinX: 0 };
+
+  boxes.sort((a, b) => a.x - b.x);
+  let maxGap = 0;
+  let splitX = Math.floor(src.cols * 0.7);
+
+  for (let i = 1; i < boxes.length; i++) {
+    let gap = boxes[i].x - (boxes[i - 1].x + boxes[i - 1].width);
+    if (gap > maxGap && gap > src.cols * 0.05) {
+      maxGap = gap;
+      splitX = boxes[i - 1].x + boxes[i - 1].width + Math.floor(gap / 2);
+    }
+  }
+
+  let leftBoxes = boxes.filter(b => b.x + b.width < splitX);
+  let gridMinX = leftBoxes.length > 0 ? Math.min(...leftBoxes.map(b => b.x)) : 0;
+
+  return { roiW: splitX, gridMinX: gridMinX };
+};
+
 const triggerUpload = () => {
   if (fileInput.value) fileInput.value.click()
 }
@@ -108,7 +159,7 @@ const detectMap = async (imgElement) => {
   try {
     statusText.value = "正在提取单色网格位置...";
     recognizedPieces.value = [];
-    const roiW = Math.floor(src.cols * 0.7);
+    const { roiW, gridMinX } = calculateDynamicBounds(src);
     let rect = new cv.Rect(0, 0, roiW, src.rows);
     let roi = src.roi(rect);
     matsToRelease.push(roi);
@@ -122,7 +173,7 @@ const detectMap = async (imgElement) => {
 
     let channels = new cv.MatVector();
     cv.split(hsv, channels);
-    let gray = channels.get(2);
+    let gray = channels.get(2).clone();
     channels.delete();
     matsToRelease.push(gray);
 
@@ -138,27 +189,40 @@ const detectMap = async (imgElement) => {
     let boxes = [];
     for (let i = 0; i < contours.size(); ++i) {
       let box = cv.boundingRect(contours.get(i));
-      if (box.width > 6 && box.height > 6 && box.width < 100) {
+      if (box.width > 6 && box.height > 6 && box.width < 100 && box.x >= gridMinX - 10) {
         boxes.push(box);
       }
     }
 
     if (boxes.length < 5) throw new Error("未检测到足够数据");
 
-    let minX = Math.min(...boxes.map(b => b.x));
-    let minY = Math.min(...boxes.map(b => b.y));
+    let yGroups = [];
+    let xGroups = [];
+    for (let b of boxes) {
+      let yg = yGroups.find(g => Math.abs(g.y - b.y) < 15);
+      if (yg) { yg.boxes.push(b); yg.y = (yg.y * (yg.boxes.length - 1) + b.y) / yg.boxes.length; }
+      else { yGroups.push({y: b.y, boxes: [b]}); }
 
-    let rowCands = boxes.filter(b => b.x < minX + 30).sort((a, b) => a.y - b.y);
-    let colCands = boxes.filter(b => b.y < minY + 30).sort((a, b) => a.x - b.x);
-
-    if (colCands.length > 2) {
-      let lastGap = colCands[colCands.length - 1].x - colCands[colCands.length - 2].x;
-      let avgGap = (colCands[colCands.length - 2].x - colCands[0].x) / (colCands.length - 2);
-      if (lastGap > avgGap * 2.5) colCands.pop();
+      let xg = xGroups.find(g => Math.abs(g.x - b.x) < 15);
+      if (xg) { xg.boxes.push(b); xg.x = (xg.x * (xg.boxes.length - 1) + b.x) / xg.boxes.length; }
+      else { xGroups.push({x: b.x, boxes: [b]}); }
     }
 
-    let rowNums = rowCands;
-    let colNums = colCands;
+    yGroups.sort((a, b) => a.y - b.y);
+    let topYGroup = yGroups.find(g => g.boxes.length >= 3 && (Math.max(...g.boxes.map(b=>b.x)) - Math.min(...g.boxes.map(b=>b.x)) > 80));
+    let colNums = topYGroup ? topYGroup.boxes : [];
+    colNums.sort((a, b) => a.x - b.x);
+
+    xGroups.sort((a, b) => a.x - b.x);
+    let leftXGroup = xGroups.find(g => g.boxes.length >= 3 && (Math.max(...g.boxes.map(b=>b.y)) - Math.min(...g.boxes.map(b=>b.y)) > 80));
+    let rowNums = leftXGroup ? leftXGroup.boxes : [];
+    rowNums.sort((a, b) => a.y - b.y);
+
+    if (colNums.length > 2) {
+      let lastGap = colNums[colNums.length - 1].x - colNums[colNums.length - 2].x;
+      let avgGap = (colNums[colNums.length - 2].x - colNums[0].x) / (colNums.length - 2);
+      if (lastGap > avgGap * 2.5) colNums.pop();
+    }
 
     for (const box of rowNums) {
       cv.rectangle(debugMat, new cv.Point(box.x, box.y), new cv.Point(box.x+box.width, box.y+box.height), [0, 255, 0, 255], 2);
@@ -183,8 +247,27 @@ const detectMap = async (imgElement) => {
     cv.cvtColor(piecesRoi, pGray, cv.COLOR_RGBA2GRAY);
     matsToRelease.push(pGray);
 
+    let pLightMask = new cv.Mat();
+    cv.threshold(pGray, pLightMask, 80, 255, cv.THRESH_BINARY);
+    matsToRelease.push(pLightMask);
+
+    let pHsv = new cv.Mat();
+    cv.cvtColor(piecesRoi, pHsv, cv.COLOR_RGBA2RGB);
+    cv.cvtColor(pHsv, pHsv, cv.COLOR_RGB2HSV);
+    matsToRelease.push(pHsv);
+
+    let pChannels = new cv.MatVector();
+    cv.split(pHsv, pChannels);
+    let pSat = pChannels.get(1);
+    pChannels.delete();
+    matsToRelease.push(pSat);
+
+    let pSatMask = new cv.Mat();
+    cv.threshold(pSat, pSatMask, 40, 255, cv.THRESH_BINARY);
+    matsToRelease.push(pSatMask);
+
     let pMask = new cv.Mat();
-    cv.threshold(pGray, pMask, 80, 255, cv.THRESH_BINARY);
+    cv.bitwise_and(pLightMask, pSatMask, pMask);
     matsToRelease.push(pMask);
 
     let pContours = new cv.MatVector();
@@ -383,7 +466,7 @@ const executeSingleOCR = async () => {
       });
     }
 
-    const roiW = Math.floor(src.cols * 0.7);
+    const { roiW } = calculateDynamicBounds(src);
     let roi = src.roi(new cv.Rect(0, 0, roiW, src.rows));
     matsToRelease.push(roi);
 
@@ -463,7 +546,7 @@ const detectDoubleMapDebug = async (imgElement) => {
 
   try {
     recognizedPieces.value = [];
-    const roiW = Math.floor(src.cols * 0.7);
+    const { roiW, gridMinX } = calculateDynamicBounds(src);
     let rect = new cv.Rect(0, 0, roiW, src.rows);
     let roi = src.roi(rect);
     matsToRelease.push(roi);
@@ -477,12 +560,20 @@ const detectDoubleMapDebug = async (imgElement) => {
 
     let channels = new cv.MatVector();
     cv.split(hsv, channels);
+    let sat = channels.get(1);
     let gray = channels.get(2);
     channels.delete();
-    matsToRelease.push(gray);
+    matsToRelease.push(sat, gray);
 
     let mask = new cv.Mat();
+    let sMask = new cv.Mat();
+
     cv.threshold(gray, mask, 80, 255, cv.THRESH_BINARY);
+    cv.threshold(sat, sMask, 40, 255, cv.THRESH_BINARY);
+
+    cv.bitwise_and(mask, sMask, mask);
+
+    sMask.delete();
     matsToRelease.push(mask);
 
     let hKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(40, 1));
@@ -502,7 +593,7 @@ const detectDoubleMapDebug = async (imgElement) => {
     let boxes = [];
     for (let i = 0; i < contours.size(); ++i) {
       let box = cv.boundingRect(contours.get(i));
-      if (box.width > 6 && box.height > 6 && box.width < 100) {
+      if (box.width > 6 && box.height > 6 && box.width < 100 && box.x >= gridMinX - 10) {
         boxes.push(box);
       }
     }
@@ -596,8 +687,27 @@ const detectDoubleMapDebug = async (imgElement) => {
     cv.cvtColor(piecesRoi, pGray, cv.COLOR_RGBA2GRAY);
     matsToRelease.push(pGray);
 
+    let pLightMask = new cv.Mat();
+    cv.threshold(pGray, pLightMask, 80, 255, cv.THRESH_BINARY);
+    matsToRelease.push(pLightMask);
+
+    let pHsv = new cv.Mat();
+    cv.cvtColor(piecesRoi, pHsv, cv.COLOR_RGBA2RGB);
+    cv.cvtColor(pHsv, pHsv, cv.COLOR_RGB2HSV);
+    matsToRelease.push(pHsv);
+
+    let pChannels = new cv.MatVector();
+    cv.split(pHsv, pChannels);
+    let pSat = pChannels.get(1);
+    pChannels.delete();
+    matsToRelease.push(pSat);
+
+    let pSatMask = new cv.Mat();
+    cv.threshold(pSat, pSatMask, 40, 255, cv.THRESH_BINARY);
+    matsToRelease.push(pSatMask);
+
     let pMask = new cv.Mat();
-    cv.threshold(pGray, pMask, 80, 255, cv.THRESH_BINARY);
+    cv.bitwise_and(pLightMask, pSatMask, pMask);
     matsToRelease.push(pMask);
 
     let pContours = new cv.MatVector();
@@ -810,7 +920,7 @@ const executeDoubleOCR = async () => {
       await worker.setParameters({ tessedit_char_whitelist: '0123456789Ø', tessedit_pageseg_mode: '10' });
     }
 
-    const roiW = Math.floor(src.cols * 0.7);
+    const { roiW } = calculateDynamicBounds(src);
     let rect = new cv.Rect(0, 0, roiW, src.rows);
     let roi = src.roi(rect);
     matsToRelease.push(roi);
@@ -1027,7 +1137,7 @@ const handleWheel = (event, type, index, colorType = null) => {
 
 const solvePuzzle = async () => {
   currentStep.value = 'processing';
-  statusText.value = '正在利用剪枝回溯算法暴力推演...';
+  statusText.value = '正在推演...';
   await nextTick();
 
   setTimeout(() => {
