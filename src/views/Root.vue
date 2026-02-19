@@ -11,7 +11,6 @@ const piecesPreviewUrl = ref('');
 const detectMode = ref('single');
 const currentStep = ref('upload');
 const matrixData = ref({ rows: [], cols: [] });
-const statusText = ref('');
 const debugCanvas = ref(null);
 const isDragging = ref(false);
 
@@ -190,7 +189,6 @@ const detectMap = async (imgElement) => {
   let matsToRelease = [src];
 
   try {
-    statusText.value = "正在提取单色网格位置...";
     recognizedPieces.value = [];
     const { roiW, gridMinX } = calculateDynamicBounds(src);
     let rect = new cv.Rect(0, 0, roiW, src.rows);
@@ -269,7 +267,6 @@ const detectMap = async (imgElement) => {
     currentStep.value = 'debug';
     await nextTick();
     cv.imshow(debugCanvas.value, debugMat);
-    statusText.value = `选区已提取：${rowNums.length}行${colNums.length}列`;
 
     let rightRoiW = src.cols - roiW;
     let piecesRoi = src.roi(new cv.Rect(roiW, 0, rightRoiW, src.rows));
@@ -477,7 +474,6 @@ const detectMap = async (imgElement) => {
 
   } catch (e) {
     console.error(e);
-    statusText.value = "提取失败";
   } finally {
     matsToRelease.forEach(m => { if (m && !m.isDeleted()) m.delete(); });
   }
@@ -485,7 +481,6 @@ const detectMap = async (imgElement) => {
 
 const executeSingleOCR = async () => {
   currentStep.value = 'processing';
-  statusText.value = "正在分析网格详情...";
 
   let src = cv.imread(inputImage.value);
   let matsToRelease = [src];
@@ -562,10 +557,8 @@ const executeSingleOCR = async () => {
     };
 
     currentStep.value = 'result';
-    statusText.value = "单色图扫描完成";
   } catch (e) {
     console.error(e);
-    statusText.value = "识别发生错误";
   } finally {
     matsToRelease.forEach(m => { if (m && !m.isDeleted()) m.delete(); });
   }
@@ -575,7 +568,6 @@ const detectDoubleMapDebug = async (imgElement) => {
   let src = cv.imread(imgElement);
   let matsToRelease = [src];
 
-  statusText.value = "提取双色网格位置...";
 
   try {
     recognizedPieces.value = [];
@@ -930,11 +922,9 @@ const detectDoubleMapDebug = async (imgElement) => {
     currentStep.value = 'debug';
     await nextTick();
     cv.imshow(debugCanvas.value, debugMat);
-    statusText.value = `选区已提取：${finalRowPairs.length}行${finalColPairs.length}列`;
 
   } catch (e) {
     console.error(e);
-    statusText.value = "提取失败";
   } finally {
     matsToRelease.forEach(m => { if (m && !m.isDeleted()) m.delete(); });
   }
@@ -942,7 +932,6 @@ const detectDoubleMapDebug = async (imgElement) => {
 
 const executeDoubleOCR = async () => {
   currentStep.value = 'processing';
-  statusText.value = "正在初始化双色 OCR...";
 
   let src = cv.imread(inputImage.value);
   let matsToRelease = [src];
@@ -1028,12 +1017,10 @@ const executeDoubleOCR = async () => {
     const toRect = (box) => new cv.Rect(box.x, box.y, box.width, box.height);
 
     for (let pair of savedDoubleBoxes.value.rows) {
-      statusText.value = `正在识别双色行... ${++count}/${total}`;
       let topRoi = mask.roi(toRect(pair.top));
       let val2 = await recognizeDigit(topRoi, worker);
       topRoi.delete();
 
-      statusText.value = `正在识别双色行... ${++count}/${total}`;
       let bottomRoi = mask.roi(toRect(pair.bottom));
       let val1 = await recognizeDigit(bottomRoi, worker);
       bottomRoi.delete();
@@ -1042,12 +1029,10 @@ const executeDoubleOCR = async () => {
     }
 
     for (let pair of savedDoubleBoxes.value.cols) {
-      statusText.value = `正在识别双色列... ${++count}/${total}`;
       let leftRoi = mask.roi(toRect(pair.left));
       let val1 = await recognizeDigit(leftRoi, worker);
       leftRoi.delete();
 
-      statusText.value = `正在识别双色列... ${++count}/${total}`;
       let rightRoi = mask.roi(toRect(pair.right));
       let val2 = await recognizeDigit(rightRoi, worker);
       rightRoi.delete();
@@ -1086,10 +1071,8 @@ const executeDoubleOCR = async () => {
 
     matrixData.value = { rows: rowVals, cols: colVals, grid: finalGrid };
     currentStep.value = 'result';
-    statusText.value = "双色图扫描完成";
   } catch (e) {
     console.error(e);
-    statusText.value = "识别发生错误";
   } finally {
     matsToRelease.forEach(m => { if (m && !m.isDeleted()) m.delete(); });
   }
@@ -1170,7 +1153,6 @@ const handleWheel = (event, type, index, colorType = null) => {
 
 const solvePuzzle = async () => {
   currentStep.value = 'processing';
-  statusText.value = '正在推演...';
   await nextTick();
 
   setTimeout(() => {
@@ -1317,11 +1299,9 @@ const solvePuzzle = async () => {
     if (success) {
       matrixData.value.solution = board;
       currentStep.value = 'solved';
-      statusText.value = '求解成功！';
     } else {
       currentStep.value = 'result';
-      statusText.value = '未找到可行解，可能存在识别错误。';
-      alert("未找到可行解，可能组件或网格识别存在误差。");
+      alert("未找到可行解，可能组件或网格识别存在误差");
     }
   }, 100);
 };
@@ -1331,7 +1311,6 @@ const handleReUpload = () => {
   currentFile.value = null;
   piecesPreviewUrl.value = '';
   currentStep.value = 'upload';
-  statusText.value = '';
   if (fileInput.value) {
     fileInput.value.value = '';
   }
@@ -1352,13 +1331,14 @@ const handleReUpload = () => {
 
       <div class="tip">故障机器人修复工具</div>
 
-      <div class="mode-selector" style="display: flex; gap: 20px; margin-bottom: 10px;">
-        <label style="cursor: pointer; font-size: 1.1rem; color: #333;">
-          <input type="radio" value="single" v-model="detectMode" /> 单色解密
-        </label>
-        <label style="cursor: pointer; font-size: 1.1rem; color: #333;">
-          <input type="radio" value="double" v-model="detectMode" /> 双色解密
-        </label>
+      <div class="mode-toggle-wrapper">
+        <span class="mode-label" :class="{ 'active': detectMode === 'single' }" @click="detectMode = 'single'">单色解密</span>
+
+        <div class="toggle-switch" :class="detectMode" @click="detectMode = detectMode === 'single' ? 'double' : 'single'">
+          <div class="toggle-circle"></div>
+        </div>
+
+        <span class="mode-label" :class="{ 'active': detectMode === 'double' }" @click="detectMode = 'double'">双色解密</span>
       </div>
 
       <div class="display-block" @click.stop="triggerUpload">
@@ -1372,7 +1352,7 @@ const handleReUpload = () => {
       <img :src="imageUrl" ref="inputImage" style="display:none" alt=""/>
       <div class="processing-content">
         <div class="tip-sub" style="font-size: 1.5rem; color: #409eff; margin-bottom: 20px;">
-          {{ statusText || '准备分析...' }}
+          准备分析...
         </div>
         <div class="button-group">
           <button class="btn btn-secondary" @click="handleReUpload">取消操作</button>
@@ -1384,17 +1364,15 @@ const handleReUpload = () => {
       <img :src="imageUrl" ref="inputImage" style="display:none" alt=""/>
       <div class="result-container">
         <div class="tip-sub" style="font-size: 1.2rem; color: #67c23a; margin-bottom: 15px; font-weight: bold;">
-          {{ statusText }}
+          提取选区
         </div>
 
         <div style="display: flex; gap: 40px; align-items: flex-start; justify-content: center; width: 100%;">
           <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
-            <span style="font-weight: bold; color: #409eff;">左侧网格选区</span>
             <canvas ref="debugCanvas" class="output-canvas" style="max-height: 65vh;"></canvas>
           </div>
 
           <div v-if="piecesPreviewUrl" style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
-            <span style="font-weight: bold; color: #409eff;">右侧组件识别预览</span>
             <img :src="piecesPreviewUrl" style="max-height: 65vh; border: 2px solid #409eff; border-radius: 8px;" alt=""/>
           </div>
         </div>
@@ -1409,7 +1387,7 @@ const handleReUpload = () => {
     <div v-else-if="currentStep === 'result'" class="preview-wrapper">
       <div class="result-container">
         <div class="tip-sub" style="font-size: 1.2rem; color: #67c23a; margin-bottom: 15px; font-weight: bold;">
-          {{ statusText }}
+          识别结果
         </div>
 
         <div style="display: flex; gap: 40px; align-items: flex-start; justify-content: center; width: 100%;">
@@ -1470,7 +1448,7 @@ const handleReUpload = () => {
     <div v-else-if="currentStep === 'solved'" class="preview-wrapper">
       <div class="result-container">
         <div class="tip-sub" style="font-size: 1.2rem; color: #67c23a; margin-bottom: 15px; font-weight: bold;">
-          {{ statusText }}
+          求解成功
         </div>
 
         <div class="matrix-board">

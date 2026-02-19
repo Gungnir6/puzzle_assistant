@@ -1,9 +1,20 @@
+/* =========================================
+   明亮清爽风格 UI (纯净色彩修正版)
+   ========================================= */
+body {
+    background-color: #f0f2f5;
+    color: #303133;
+    margin: 0;
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+
 .upload-container {
     width: 100%;
-    height: 100vh;
+    min-height: 100vh;
     display: flex;
     justify-content: center;
     align-items: center;
+    background-color: #f0f2f5;
 }
 
 .upload-placeholder {
@@ -11,15 +22,17 @@
     flex-direction: column;
     align-items: center;
     gap: 20px;
-    padding: 40px 80px;
-    border: 2px dashed transparent;
-    border-radius: 12px;
+    padding: 60px 100px;
+    background: #ffffff;
+    border: 2px dashed #dcdfe6;
+    border-radius: 8px;
     transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .upload-placeholder.is-dragging {
-    border-color: #409eff;
-    background-color: rgba(64, 158, 255, 0.05);
+    border-color: #ffb800; /* 明亮的黄色 */
+    background-color: rgba(255, 184, 0, 0.05);
     transform: scale(1.02);
 }
 
@@ -28,15 +41,15 @@
     flex-direction: column;
     align-items: center;
     gap: 20px;
+    padding: 20px;
 }
 
 .preview-img {
     max-width: 400px;
     max-height: 400px;
-    width: auto;
-    height: auto;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border-radius: 4px;
+    border: 1px solid #dcdfe6;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
 }
 
 .button-group {
@@ -45,59 +58,71 @@
 }
 
 .btn {
-    padding: 10px 30px;
+    padding: 10px 35px;
     cursor: pointer;
     border-radius: 4px;
     font-size: 1rem;
-    font-family: 'Harmony-regular', sans-serif;
-    transition: all 0.2s;
+    font-weight: bold;
+    letter-spacing: 1px;
+    transition: all 0.2s ease;
     border: none;
 }
 
+/* 按钮使用干净明亮的黄色 */
 .btn-primary {
-    background-color: #409eff;
-    color: white;
+    background-color: #ffb800;
+    color: #ffffff;
 }
 
 .btn-primary:hover {
-    background-color: #66b1ff;
+    background-color: #ffc633;
+    transform: translateY(-1px);
 }
 
 .btn-secondary {
-    background-color: white;
-    border: 1px solid #ccc;
-    color: #333;
+    background-color: #ffffff;
+    border: 1px solid #dcdfe6;
+    color: #606266;
 }
 
 .btn-secondary:hover {
-    border-color: #409eff;
-    color: #409eff;
-    background-color: #ecf5ff;
+    border-color: #ffb800;
+    color: #ffb800;
+    background-color: rgba(255, 184, 0, 0.05);
 }
 
 .tip {
-    font-size: 2.5rem;
-    font-family: 'Harmony-regular', sans-serif;
-    color: #333;
+    font-size: 2.2rem;
+    color: #303133;
+    letter-spacing: 2px;
+    font-weight: bold;
 }
 
 .tip-sub {
-    font-size: 1rem;
-    color: #999;
-    font-family: 'Harmony-regular', sans-serif;
+    font-size: 0.95rem;
+    color: #909399;
+}
+
+.processing-content .tip-sub,
+.result-container .tip-sub {
+    font-size: 1.2rem !important;
+    font-weight: bold !important;
 }
 
 .display-block {
-    width: 200px;
-    height: 200px;
+    width: 220px;
+    height: 220px;
     position: relative;
     cursor: pointer;
-    background-color: transparent;
-    transition: transform 0.2s ease;
+    background-color: #fafafa;
+    border: 1px solid #ebeef5;
+    transition: all 0.3s ease;
 }
 
 .display-block:hover {
     transform: scale(1.02);
+    background-color: #ffffff;
+    border-color: #ffb800;
 }
 
 .display-block::before,
@@ -106,77 +131,44 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    background-color: #ccc;
+    background-color: #c0c4cc;
     transform: translate(-50%, -50%);
     transition: background-color 0.3s;
 }
 
-.display-block::before {
-    width: 40px;
-    height: 2px;
-}
-
-.display-block::after {
-    width: 2px;
-    height: 40px;
-}
+.display-block::before { width: 40px; height: 2px; }
+.display-block::after { width: 2px; height: 40px; }
 
 .display-block:hover::before,
 .display-block:hover::after {
-    background-color: #409eff;
+    background-color: #ffb800;
 }
 
 .corner {
     position: absolute;
-    width: 20px;
-    height: 20px;
-    border: 3px solid #333;
+    width: 15px;
+    height: 15px;
+    border: 2px solid #909399;
+    transition: border-color 0.3s;
 }
 
-.t-l {
-    top: 0;
-    left: 0;
-    border-right: none;
-    border-bottom: none;
-}
+.display-block:hover .corner { border-color: #ffb800; }
 
-.t-r {
-    top: 0;
-    right: 0;
-    border-left: none;
-    border-bottom: none;
-}
-
-.b-l {
-    bottom: 0;
-    left: 0;
-    border-right: none;
-    border-top: none;
-}
-
-.b-r {
-    bottom: 0;
-    right: 0;
-    border-left: none;
-    border-top: none;
-}
+.t-l { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+.t-r { top: -1px; right: -1px; border-left: none; border-bottom: none; }
+.b-l { bottom: -1px; left: -1px; border-right: none; border-top: none; }
+.b-r { bottom: -1px; right: -1px; border-left: none; border-top: none; }
 
 .output-canvas {
     max-width: 90vw;
     max-height: 70vh;
-    border: 2px solid #409eff;
-    border-radius: 8px;
-    background-color: #1a1a1a;
+    border: 1px solid #dcdfe6;
+    border-radius: 4px;
+    background-color: #ffffff;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
 }
 
-.processing-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 20px;
-}
-
-.result-container {
+.processing-content, .result-container {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -186,17 +178,17 @@
 .matrix-board {
     display: flex;
     flex-direction: column;
-    gap: 5px;
-    padding: 20px;
-    background-color: white;
+    gap: 4px;
+    padding: 30px;
+    background-color: #ffffff;
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    border: 1px solid #eee;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    border: 1px solid #ebeef5;
 }
 
 .matrix-row {
     display: flex;
-    gap: 5px;
+    gap: 4px;
 }
 
 .cell {
@@ -206,34 +198,30 @@
     justify-content: center;
     align-items: center;
     font-size: 1.2rem;
-    font-family: 'Harmony-regular', sans-serif;
-    color: #333;
+    font-weight: bold;
+    color: #303133;
     background-color: #f5f7fa;
-    border-radius: 4px;
     box-sizing: border-box;
     position: relative;
+    border-radius: 2px;
 }
 
 .header-cell {
-    font-weight: bold;
-    color: #67c23a;
-    background-color: #ecf5ff;
+    color: #606266;
+    background-color: transparent !important;
+    border: none !important;
 }
 
 .grid-cell {
     border: 1px solid #e4e7ed;
-    background-color: white;
+    background-color: #ffffff;
 }
 
-.corner-cell {
-    background-color: transparent;
-}
+.corner-cell { background-color: transparent; }
+.normal-cell { background-color: #ffffff !important; }
 
-.normal-cell {
-    background-color: white !important;
-}
-
-.preset-c1-cell {
+/* 恢复纯净的绿色和蓝色方块 */
+.preset-c1-cell, .preset-cell {
     background-color: #67c23a !important;
     border-color: #529b2e !important;
 }
@@ -243,26 +231,24 @@
     border-color: #3a8ee6 !important;
 }
 
-.preset-cell {
-    background-color: #67c23a !important;
-}
-
 .obstacle-cell {
-    background-color: #dcdfe6 !important;
+    background-color: #f4f4f5 !important;
+    border-color: #e9e9eb !important;
     background-image: repeating-linear-gradient(
             45deg,
             transparent,
             transparent 5px,
-            rgba(0, 0, 0, 0.1) 5px,
-            rgba(0, 0, 0, 0.1) 10px
+            rgba(0, 0, 0, 0.05) 5px,
+            rgba(0, 0, 0, 0.05) 10px
     ) !important;
 }
 
 .pieces-board {
-    padding: 20px;
-    background-color: #2b2b2b;
+    padding: 30px;
+    background-color: #ffffff;
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    border: 1px solid #ebeef5;
 }
 
 .pieces-grid {
@@ -274,214 +260,73 @@
 .piece-box {
     width: 100px;
     height: 100px;
-    background-color: #1a1a1a;
+    background-color: #f5f7fa;
+    border: 1px solid #e4e7ed;
     display: flex;
     justify-content: center;
     align-items: center;
-    border-radius: 6px;
+    border-radius: 4px;
 }
 
-.piece-render {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
+.piece-render { display: flex; flex-direction: column; gap: 2px; }
+.piece-row { display: flex; gap: 2px; }
+.piece-cell { width: 22px; height: 22px; border-radius: 1px; }
+.piece-empty { background-color: transparent; }
 
-.piece-row {
-    display: flex;
-    gap: 2px;
-}
+.piece-single, .piece-c1 { background-color: #67c23a; border: 1px solid #a8e83b; box-sizing: border-box; }
+.piece-c2 { background-color: #409eff; border: 1px solid #8cc5ff; box-sizing: border-box; }
 
-.piece-cell {
-    width: 22px;
-    height: 22px;
-    border-radius: 2px;
-}
-
-.piece-empty {
-    background-color: transparent;
-}
-
-.piece-single {
-    background-color: #67c23a;
-    border: 2px solid #a8e83b;
-    box-sizing: border-box;
-}
-
-.piece-c1 {
-    background-color: #67c23a;
-    border: 2px solid #a8e83b;
-    box-sizing: border-box;
-}
-
-.piece-c2 {
-    background-color: #409eff;
-    border: 2px solid #8cc5ff;
-    box-sizing: border-box;
-}
-
-.cell-piece-single {
+.cell-piece-single, .cell-piece-c1 {
     background-color: #67c23a !important;
-    border: 3px solid #a8e83b !important;
+    border: 2px solid #a8e83b !important;
     box-sizing: border-box;
-}
-
-.cell-piece-c1 {
-    background-color: #67c23a !important;
-    border: 3px solid #a8e83b !important;
-    box-sizing: border-box;
+    color: #ffffff;
 }
 
 .cell-piece-c2 {
     background-color: #409eff !important;
-    border: 3px solid #8cc5ff !important;
+    border: 2px solid #8cc5ff !important;
     box-sizing: border-box;
+    color: #ffffff;
 }
 
-.conn-t {
-    border-top-width: 0 !important;
-    border-top-left-radius: 0 !important;
-    border-top-right-radius: 0 !important;
-}
-
-.conn-b {
-    border-bottom-width: 0 !important;
-    border-bottom-left-radius: 0 !important;
-    border-bottom-right-radius: 0 !important;
-}
-
-.conn-l {
-    border-left-width: 0 !important;
-    border-top-left-radius: 0 !important;
-    border-bottom-left-radius: 0 !important;
-}
-
-.conn-r {
-    border-right-width: 0 !important;
-    border-top-right-radius: 0 !important;
-    border-bottom-right-radius: 0 !important;
-}
+/* 完美无缝拼接逻辑 */
+.conn-t { border-top-width: 0 !important; border-top-left-radius: 0 !important; border-top-right-radius: 0 !important; }
+.conn-b { border-bottom-width: 0 !important; border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
+.conn-l { border-left-width: 0 !important; border-top-left-radius: 0 !important; border-bottom-left-radius: 0 !important; }
+.conn-r { border-right-width: 0 !important; border-top-right-radius: 0 !important; border-bottom-right-radius: 0 !important; }
 
 .conn-r::after {
-    content: '';
-    position: absolute;
-    right: -6px;
-    width: 6px;
-    top: -3px;
-    bottom: -3px;
-    box-sizing: border-box;
-    z-index: 5;
-    border-top: 3px solid;
-    border-bottom: 3px solid;
+    content: ''; position: absolute; right: -5px; width: 5px; top: -2px; bottom: -2px; box-sizing: border-box; z-index: 5; border-top: 2px solid; border-bottom: 2px solid;
 }
-
-.conn-r.conn-t::after {
-    top: 0;
-}
-
-.conn-r.conn-b::after {
-    bottom: 0;
-}
-
-.conn-r.conn-tr::after {
-    border-top-width: 0;
-}
-
-.conn-r.conn-br::after {
-    border-bottom-width: 0;
-}
+.conn-r.conn-t::after { top: 0; }
+.conn-r.conn-b::after { bottom: 0; }
+.conn-r.conn-tr::after { border-top-width: 0; }
+.conn-r.conn-br::after { border-bottom-width: 0; }
 
 .conn-b::before {
-    content: '';
-    position: absolute;
-    bottom: -6px;
-    height: 6px;
-    left: -3px;
-    right: -3px;
-    box-sizing: border-box;
-    z-index: 5;
-    border-left: 3px solid;
-    border-right: 3px solid;
+    content: ''; position: absolute; bottom: -5px; height: 5px; left: -2px; right: -2px; box-sizing: border-box; z-index: 5; border-left: 2px solid; border-right: 2px solid;
 }
+.conn-b.conn-l::before { left: 0; }
+.conn-b.conn-r::before { right: 0; }
+.conn-b.conn-bl::before { border-left-width: 0; }
+.conn-b.conn-br::before { border-right-width: 0; }
 
-.conn-b.conn-l::before {
-    left: 0;
-}
+.corner-bridge { position: absolute; right: -5px; bottom: -5px; width: 5px; height: 5px; z-index: 6; }
 
-.conn-b.conn-r::before {
-    right: 0;
-}
+.cell-piece-single.conn-r::after, .cell-piece-c1.conn-r::after { background-color: #67c23a; border-top-color: #a8e83b; border-bottom-color: #a8e83b; }
+.cell-piece-single.conn-b::before, .cell-piece-c1.conn-b::before { background-color: #67c23a; border-left-color: #a8e83b; border-right-color: #a8e83b; }
+.cell-piece-single .corner-bridge, .cell-piece-c1 .corner-bridge { background-color: #67c23a; }
 
-.conn-b.conn-bl::before {
-    border-left-width: 0;
-}
+.cell-piece-c2.conn-r::after { background-color: #409eff; border-top-color: #8cc5ff; border-bottom-color: #8cc5ff; }
+.cell-piece-c2.conn-b::before { background-color: #409eff; border-left-color: #8cc5ff; border-right-color: #8cc5ff; }
+.cell-piece-c2 .corner-bridge { background-color: #409eff; }
 
-.conn-b.conn-br::before {
-    border-right-width: 0;
-}
-
-.corner-bridge {
-    position: absolute;
-    right: -6px;
-    bottom: -6px;
-    width: 6px;
-    height: 6px;
-    z-index: 6;
-}
-
-.cell-piece-single.conn-r::after {
-    background-color: #67c23a;
-    border-top-color: #a8e83b;
-    border-bottom-color: #a8e83b;
-}
-
-.cell-piece-single.conn-b::before {
-    background-color: #67c23a;
-    border-left-color: #a8e83b;
-    border-right-color: #a8e83b;
-}
-
-.cell-piece-single .corner-bridge {
-    background-color: #67c23a;
-}
-
-.cell-piece-c1.conn-r::after {
-    background-color: #67c23a;
-    border-top-color: #a8e83b;
-    border-bottom-color: #a8e83b;
-}
-
-.cell-piece-c1.conn-b::before {
-    background-color: #67c23a;
-    border-left-color: #a8e83b;
-    border-right-color: #a8e83b;
-}
-
-.cell-piece-c1 .corner-bridge {
-    background-color: #67c23a;
-}
-
-.cell-piece-c2.conn-r::after {
-    background-color: #409eff;
-    border-top-color: #8cc5ff;
-    border-bottom-color: #8cc5ff;
-}
-
-.cell-piece-c2.conn-b::before {
-    background-color: #409eff;
-    border-left-color: #8cc5ff;
-    border-right-color: #8cc5ff;
-}
-
-.cell-piece-c2 .corner-bridge {
-    background-color: #409eff;
-}
-
+/* SVG图标重置色彩，保持白色高对比 */
 .lock-icon-svg {
     width: 20px;
     height: 20px;
-    color: white;
-    fill: white;
+    fill: #ffffff;
     z-index: 10;
     pointer-events: none;
     position: absolute;
@@ -493,12 +338,72 @@
 .adjustable-number {
     cursor: ns-resize;
     display: inline-block;
-    padding: 2px 4px;
+    padding: 2px 6px;
     border-radius: 4px;
-    transition: transform 0.1s ease, background-color 0.2s ease;
+    transition: all 0.2s ease;
+    /* 设置单色模式下的数字颜色为绿色 */
+    color: #67c23a;
 }
 
 .adjustable-number:hover {
     background-color: rgba(0, 0, 0, 0.05);
-    transform: scale(1.15);
+    transform: scale(1.1);
+}
+
+/* =========================================
+   模式切换开关 (Toggle Switch)
+   ========================================= */
+.mode-toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+    padding: 10px 20px;
+    background: #ffffff;
+    border: 1px solid #dcdfe6;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.mode-label {
+    font-size: 1rem;
+    color: #909399;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: normal;
+}
+
+.mode-label.active {
+    color: #303133;
+    font-weight: bold;
+}
+
+.toggle-switch {
+    width: 54px;
+    height: 28px;
+    border-radius: 14px;
+    background-color: #67c23a; /* 单色模式按钮恢复为绿色 */
+    position: relative;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.toggle-switch.double {
+    background-color: #409eff; /* 双色模式按钮恢复为蓝色 */
+}
+
+.toggle-circle {
+    width: 24px;
+    height: 24px;
+    background-color: #ffffff;
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+.toggle-switch.double .toggle-circle {
+    transform: translateX(26px);
 }
