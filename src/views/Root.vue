@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import LockIcon from '@/assets/lock.svg';
+import GithubIcon from '@/assets/github.svg';
 
 const imageUrl = ref('');
 const inputImage = ref(null);
@@ -1475,6 +1476,10 @@ const handleReUpload = () => {
 
 <template>
   <div class="upload-container">
+    <a href="https://github.com/Gungnir6/puzzle_assistant" target="_blank" class="github-link">
+      <GithubIcon class="github-icon" />
+    </a>
+
     <input type="file" ref="fileInput" accept="image/*" @change="handleFileChange" style="display: none" />
 
     <div v-if="currentStep === 'upload'"

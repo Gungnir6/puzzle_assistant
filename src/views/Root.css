@@ -159,8 +159,8 @@ body {
 .b-r { bottom: -1px; right: -1px; border-left: none; border-top: none; }
 
 .output-canvas {
-    max-width: 80vw;
-    max-height: 70vh;
+    max-height: 65vh;
+    max-width: 100%;
     border: 1px solid #dcdfe6;
     border-radius: 4px;
     background-color: #ffffff;
@@ -418,15 +418,38 @@ body {
     align-items: center;
     gap: 10px;
 }
-.output-canvas {
-    max-height: 65vh;
-    max-width: 100%;
-}
+
 .output-img {
     max-height: 65vh;
     max-width: 100%;
     border: 2px solid #409eff;
     border-radius: 8px;
+}
+
+.github-link {
+    position: fixed;
+    top: 25px;
+    right: 30px;
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.github-link:hover {
+    transform: scale(1.15) translateY(-2px);
+}
+
+.github-icon {
+    width: 36px;
+    height: 36px;
+    fill: #909399;
+    transition: fill 0.3s ease;
+}
+
+.github-link:hover .github-icon {
+    fill: #303133;
 }
 
 @media (max-width: 768px) {
@@ -497,5 +520,14 @@ body {
 
     .adjustable-number {
         font-size: 0.7rem;
+    }
+
+    .github-link {
+        top: 15px;
+        right: 15px;
+    }
+    .github-icon {
+        width: 28px;
+        height: 28px;
     }
 }
