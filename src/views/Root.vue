@@ -701,6 +701,17 @@ const detectDoubleMapDebug = async (imgElement) => {
       else { yGroups.push({y: b.y, boxes: [b]}); }
     }
 
+    let xGroups = [];
+    for (let b of boxes) {
+      let xg = xGroups.find(g => Math.abs(g.x - b.x) < src.cols * 0.02);
+      if (xg) {
+        xg.boxes.push(b);
+        xg.x = (xg.x * (xg.boxes.length - 1) + b.x) / xg.boxes.length;
+      } else {
+        xGroups.push({x: b.x, boxes: [b]});
+      }
+    }
+
     let validYGroups = yGroups.filter(g => g.boxes.length >= 4 && (Math.max(...g.boxes.map(b=>b.x)) - Math.min(...g.boxes.map(b=>b.x)) > src.cols * 0.05));
     validYGroups.sort((a, b) => {
       if (b.boxes.length !== a.boxes.length) return b.boxes.length - a.boxes.length;
@@ -735,7 +746,20 @@ const detectDoubleMapDebug = async (imgElement) => {
     }
 
     let mapBoundaryX = colCands.length > 0 ? colCands[0].x : 1000;
-    let rowCands = boxes.filter(b => b.y > minY + 10 && (b.x + b.width) < mapBoundaryX + 5);
+
+    let validXGroups = xGroups.filter(g =>
+        g.x < mapBoundaryX - 10 &&
+        g.boxes.length >= 4 &&
+        (Math.max(...g.boxes.map(b=>b.y)) - Math.min(...g.boxes.map(b=>b.y)) > src.rows * 0.1)
+    );
+
+    validXGroups.sort((a, b) => {
+      if (Math.abs(a.boxes.length - b.boxes.length) > 2) return b.boxes.length - a.boxes.length;
+      return a.x - b.x;
+    });
+
+    let leftXGroup = validXGroups.length > 0 ? validXGroups[0] : null;
+    let rowCands = leftXGroup ? leftXGroup.boxes : [];
 
     let finalRowPairs = [];
     if (rowCands.length > 0) {
