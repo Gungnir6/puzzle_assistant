@@ -1523,13 +1523,13 @@ const handleReUpload = () => {
           提取选区
         </div>
 
-        <div style="display: flex; gap: 40px; align-items: flex-start; justify-content: center; width: 100%;">
-          <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
-            <canvas ref="debugCanvas" class="output-canvas" style="max-height: 65vh;"></canvas>
+        <div class="debug-layout">
+          <div class="debug-col">
+            <canvas ref="debugCanvas" class="output-canvas"></canvas>
           </div>
 
-          <div v-if="piecesPreviewUrl" style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
-            <img :src="piecesPreviewUrl" style="max-height: 65vh; border: 2px solid #409eff; border-radius: 8px;" alt=""/>
+          <div v-if="piecesPreviewUrl" class="debug-col">
+            <img :src="piecesPreviewUrl" class="output-img" alt=""/>
           </div>
         </div>
 
