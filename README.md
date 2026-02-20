@@ -1,38 +1,66 @@
-# puzzle_assistant
+# Puzzle Assistant
 
-This template should help get you started developing with Vue 3 in Vite.
+## 项目简介
 
-## Recommended IDE Setup
+Puzzle Assistant 是一款基于 Web 的自动化解谜辅助工具，旨在通过计算机视觉技术自动化终末地中故障机器人谜题的求解，用户通过上传游戏截图，系统利用 OpenCV.js 自动提取地图的行列维度及内部数字信息，并通过剪枝DFS算法给出可行解
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+## 技术栈
 
-## Recommended Browser Setup
+本项目采用了现代前端主流开发架构：
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
+* 前端框架：Vue3
+* 构建工具：Vite
+* 图像处理：OpenCV.js
+* 编程语言：JavaScript
+* 样式处理：CSS3
 
-## Customize configuration
+## 使用说明
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+推荐访问 **[https://puzzle-assistant.pages.dev](https://puzzle-assistant.pages.dev)** 直接使用
 
-## Project Setup
+### 1. 环境准备
+确保你的开发环境已安装 Node.js (建议版本 16.0.0 或更高)
 
-```sh
+### 2. 克隆与安装
+使用 Git 克隆项目到本地：
+```cmd
+git clone https://github.com/Gungnir6/puzzle_assistant.git
+cd puzzle_assistant
+```
+
+安装项目依赖：
+```cmd
 npm install
 ```
 
-### Compile and Hot-Reload for Development
-
-```sh
+### 3. 运行开发服务器
+在本地启动预览：
+```cmd
 npm run dev
 ```
 
-### Compile and Minify for Production
+启动后，访问浏览器显示的本地地址 (通常为 http://localhost:5173)
 
-```sh
-npm run build
-```
+### 4. 功能操作步骤
+1. 进入应用页面后，点击上传区域选择游戏截图，同时支持拖拽上传图片与Ctrl+V粘贴图片
+
+   > 图片要求：选择**数字**而非**图形**显示模式，图片完整较为清晰
+
+2. 系统将调用 OpenCV.js 识别地图的行数、列数及障碍物和锁定块信息
+
+3. 如果数字识别出现问题，可以手动调整：
+
+   - 移动端：点击数字即可循环+1，或者长按数字并上下滑动以调整数字
+   - 电脑端：除上述方法外，还可将鼠标悬浮至数字上并滑动鼠标滚轮以调整数字
+
+4. 确认识别结果无误后，点击求解按钮
+
+5. 页面将直观展示最终可行答案（只展示一种）
+
+## 开源协议
+
+本项目遵循 [*CC BY-NC 4.0 (署名-非商业性使用)*](https://creativecommons.org/licenses/by-nc/4.0/deed.zh-hans) 开源协议
+
+**简要说明：**
+1. **署名**：您可以自由地转载、修改和引用代码，但必须保留原作者的署名
+2. **非商业性使用**：您不得将本项目及其衍生作品用于任何商业目的
