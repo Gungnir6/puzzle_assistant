@@ -43,7 +43,7 @@ const calculateDynamicBounds = (src) => {
   let boxes = [];
   for (let i = 0; i < contours.size(); ++i) {
     let box = cv.boundingRect(contours.get(i));
-    if (box.width > src.cols * 0.003 && box.height > src.rows * 0.003 && box.width < src.cols * 0.3) {
+    if (box.width > src.cols * 0.001 && box.height > src.rows * 0.015 && box.width < src.cols * 0.3) {
       boxes.push(box);
     }
   }
@@ -60,7 +60,6 @@ const calculateDynamicBounds = (src) => {
   for (let i = 1; i < boxes.length; i++) {
     let gap = boxes[i].x - (boxes[i - 1].x + boxes[i - 1].width);
     let gapCenterX = boxes[i - 1].x + boxes[i - 1].width + Math.floor(gap / 2);
-
     if (gap > maxGap && gap > src.cols * 0.05 && gapCenterX > src.cols * 0.55) {
       maxGap = gap;
       splitX = gapCenterX;
@@ -147,53 +146,96 @@ const recognizeDigit = async (inputMat, workerInstance) => {
   let canvas = document.createElement('canvas');
 
   try {
-    let { maxVal } = cv.minMaxLoc(inputMat);
-    if (maxVal < 150) return 0;
-
-    let scaled = new cv.Mat();
-    mats.push(scaled);
-    let dsize = new cv.Size(inputMat.cols * 4, inputMat.rows * 4);
-    cv.resize(inputMat, scaled, dsize, 0, 0, cv.INTER_CUBIC);
-
-    let blurred = new cv.Mat();
-    mats.push(blurred);
-    cv.GaussianBlur(scaled, blurred, new cv.Size(3, 3), 0);
+    let minMax = cv.minMaxLoc(inputMat);
+    if (minMax.maxVal < 60) return 0;
 
     let binary = new cv.Mat();
     mats.push(binary);
+    cv.threshold(inputMat, binary, minMax.maxVal * 0.45, 255, cv.THRESH_BINARY);
 
-    cv.threshold(blurred, binary, 80, 255, cv.THRESH_BINARY);
+    let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2, 2));
+    cv.morphologyEx(binary, binary, cv.MORPH_CLOSE, kernel);
+    mats.push(kernel);
+
+    let contours = new cv.MatVector();
+    let hierarchy = new cv.Mat();
+    cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    mats.push(contours, hierarchy);
+
+    let maxArea = 0;
+    let contourBoxes = [];
+    for (let i = 0; i < contours.size(); ++i) {
+      let box = cv.boundingRect(contours.get(i));
+      let area = box.width * box.height;
+      if (area > maxArea) maxArea = area;
+      contourBoxes.push({ box, area });
+    }
+
+    let minX = inputMat.cols, minY = inputMat.rows, maxX = 0, maxY = 0;
+    let validCount = 0;
+    for (let cb of contourBoxes) {
+      if (cb.area >= maxArea * 0.1 && cb.box.height > 5) {
+        minX = Math.min(minX, cb.box.x);
+        minY = Math.min(minY, cb.box.y);
+        maxX = Math.max(maxX, cb.box.x + cb.box.width);
+        maxY = Math.max(maxY, cb.box.y + cb.box.height);
+        validCount++;
+      }
+    }
+
+    if (validCount === 0) return 0;
+
+    let bestBox = new cv.Rect(minX, minY, maxX - minX, maxY - minY);
+    let ratio = bestBox.width / bestBox.height;
+
+    let tightRoi = binary.roi(bestBox);
+    mats.push(tightRoi);
+
+    let targetHeight = 64;
+    let scale = targetHeight / bestBox.height;
+    let targetWidth = Math.max(1, Math.round(bestBox.width * scale));
+
+    let scaled = new cv.Mat();
+    mats.push(scaled);
+    cv.resize(tightRoi, scaled, new cv.Size(targetWidth, targetHeight), 0, 0, cv.INTER_LINEAR);
 
     let inverted = new cv.Mat();
     mats.push(inverted);
-    cv.bitwise_not(binary, inverted);
+    cv.bitwise_not(scaled, inverted);
 
     let padded = new cv.Mat();
     mats.push(padded);
-    let color = new cv.Scalar(255, 255, 255);
-    cv.copyMakeBorder(inverted, padded, 30, 30, 30, 30, cv.BORDER_CONSTANT, color);
+    let pad = 30;
+    let color = new cv.Scalar(255, 255, 255, 255);
+    cv.copyMakeBorder(inverted, padded, pad, pad, pad, pad, cv.BORDER_CONSTANT, color);
 
     cv.imshow(canvas, padded);
 
     await workerInstance.setParameters({
-      tessedit_char_whitelist: '0123456789',
-      tessedit_pageseg_mode: '10',
+      tessedit_char_whitelist: '0123456789Ø',
+      tessedit_pageseg_mode: '8'
     });
 
     const { data: { text } } = await workerInstance.recognize(canvas);
-    let cleanText = text.trim();
+    let cleanText = text.replace(/[^0-9Ø]/g, '');
 
-    if (!cleanText) return 0;
-    let num = parseInt(cleanText);
-    return isNaN(num) ? 0 : num;
+    if (!cleanText) {
+      return ratio < 0.45 ? 1 : 0;
+    }
+
+    let num = cleanText[0] === 'Ø' ? 0 : parseInt(cleanText[0]);
+    if (isNaN(num)) num = 0;
+
+    if (num === 1 && ratio > 0.45) return 0;
+    if (num === 0 && ratio < 0.35) return 1;
+
+    return num;
 
   } catch (err) {
-    console.error("Digit recognize error:", err);
+    console.error(err);
     return 0;
   } finally {
-    mats.forEach(m => {
-      if (m && !m.isDeleted()) m.delete();
-    });
+    mats.forEach(m => { if (m && !m.isDeleted()) m.delete(); });
   }
 };
 
@@ -233,12 +275,15 @@ const detectMap = async (imgElement) => {
     let boxes = [];
     for (let i = 0; i < contours.size(); ++i) {
       let box = cv.boundingRect(contours.get(i));
-      if (box.width > src.cols * 0.005 && box.height > src.rows * 0.005 && box.width < src.cols * 0.1 && box.x >= gridMinX - 10) {
+      if (box.width > src.cols * 0.001 && box.height > src.rows * 0.015 && box.width < src.cols * 0.1 && box.x >= gridMinX - 10) {
         boxes.push(box);
       }
     }
 
-    if (boxes.length < 5) throw new Error("未检测到足够数据");
+    if (boxes.length < 5){
+      alert("未检测到足够数据")
+      throw new Error("未检测到足够数据");
+    }
 
     let yGroups = [];
     let xGroups = [];
@@ -252,13 +297,25 @@ const detectMap = async (imgElement) => {
       else { xGroups.push({x: b.x, boxes: [b]}); }
     }
 
-    yGroups.sort((a, b) => a.y - b.y);
-    let topYGroup = yGroups.find(g => g.boxes.length >= 3 && (Math.max(...g.boxes.map(b=>b.x)) - Math.min(...g.boxes.map(b=>b.x)) > src.cols * 0.05));
+    let validYGroups = yGroups.filter(g => g.boxes.length >= 3 && (Math.max(...g.boxes.map(b=>b.x)) - Math.min(...g.boxes.map(b=>b.x)) > src.cols * 0.05));
+    validYGroups.sort((a, b) => {
+      if (b.boxes.length !== a.boxes.length) return b.boxes.length - a.boxes.length;
+      let aHeight = a.boxes.reduce((s, bx) => s + bx.height, 0) / a.boxes.length;
+      let bHeight = b.boxes.reduce((s, bx) => s + bx.height, 0) / b.boxes.length;
+      return bHeight - aHeight;
+    });
+    let topYGroup = validYGroups.length > 0 ? validYGroups[0] : null;
     let colNums = topYGroup ? topYGroup.boxes : [];
     colNums.sort((a, b) => a.x - b.x);
 
-    xGroups.sort((a, b) => a.x - b.x);
-    let leftXGroup = xGroups.find(g => g.boxes.length >= 3 && (Math.max(...g.boxes.map(b=>b.y)) - Math.min(...g.boxes.map(b=>b.y)) > src.rows * 0.05));
+    let validXGroups = xGroups.filter(g => g.boxes.length >= 3 && (Math.max(...g.boxes.map(b=>b.y)) - Math.min(...g.boxes.map(b=>b.y)) > src.rows * 0.05));
+    validXGroups.sort((a, b) => {
+      if (b.boxes.length !== a.boxes.length) return b.boxes.length - a.boxes.length;
+      let aHeight = a.boxes.reduce((s, bx) => s + bx.height, 0) / a.boxes.length;
+      let bHeight = b.boxes.reduce((s, bx) => s + bx.height, 0) / b.boxes.length;
+      return bHeight - aHeight;
+    });
+    let leftXGroup = validXGroups.length > 0 ? validXGroups[0] : null;
     let rowNums = leftXGroup ? leftXGroup.boxes : [];
     rowNums.sort((a, b) => a.y - b.y);
 
@@ -580,7 +637,6 @@ const detectDoubleMapDebug = async (imgElement) => {
   let src = cv.imread(imgElement);
   let matsToRelease = [src];
 
-
   try {
     recognizedPieces.value = [];
     const { roiW, gridMinX } = calculateDynamicBounds(src);
@@ -630,16 +686,32 @@ const detectDoubleMapDebug = async (imgElement) => {
     let boxes = [];
     for (let i = 0; i < contours.size(); ++i) {
       let box = cv.boundingRect(contours.get(i));
-      if (box.width > src.cols * 0.003 && box.height > src.rows * 0.003 && box.width < src.cols * 0.1 && box.x >= gridMinX - 10) {
+      if (box.width > src.cols * 0.001 && box.height > src.rows * 0.015 && box.width < src.cols * 0.1 && box.x >= gridMinX - 10) {
         boxes.push(box);
       }
     }
 
     if (boxes.length === 0) throw new Error("未检测到有效元素");
 
-    let minY = Math.min(...boxes.map(b => b.y));
+    let yGroups = [];
+    for (let b of boxes) {
+      let yg = yGroups.find(g => Math.abs(g.y - b.y) < src.rows * 0.02);
+      if (yg) { yg.boxes.push(b); yg.y = (yg.y * (yg.boxes.length - 1) + b.y) / yg.boxes.length; }
+      else { yGroups.push({y: b.y, boxes: [b]}); }
+    }
 
-    let colCands = boxes.filter(b => b.y < minY + Math.floor(src.rows * 0.03));
+    let validYGroups = yGroups.filter(g => g.boxes.length >= 4 && (Math.max(...g.boxes.map(b=>b.x)) - Math.min(...g.boxes.map(b=>b.x)) > src.cols * 0.05));
+    validYGroups.sort((a, b) => {
+      if (b.boxes.length !== a.boxes.length) return b.boxes.length - a.boxes.length;
+      let aHeight = a.boxes.reduce((s, bx) => s + bx.height, 0) / a.boxes.length;
+      let bHeight = b.boxes.reduce((s, bx) => s + bx.height, 0) / b.boxes.length;
+      return bHeight - aHeight;
+    });
+
+    if (validYGroups.length === 0) throw new Error("未检测到双色列坐标");
+    let topYGroup = validYGroups[0];
+    let minY = topYGroup.y;
+    let colCands = topYGroup.boxes;
     colCands.sort((a, b) => a.x - b.x);
 
     if (colCands.length > 2) {
@@ -662,7 +734,7 @@ const detectDoubleMapDebug = async (imgElement) => {
     }
 
     let mapBoundaryX = colCands.length > 0 ? colCands[0].x : 1000;
-    let rowCands = boxes.filter(b => (b.x + b.width) < mapBoundaryX + 5);
+    let rowCands = boxes.filter(b => b.y > minY + 10 && (b.x + b.width) < mapBoundaryX + 5);
 
     let finalRowPairs = [];
     if (rowCands.length > 0) {
@@ -685,10 +757,8 @@ const detectDoubleMapDebug = async (imgElement) => {
       }
     }
 
-    //保存坐标供后续 OCR 使用
     savedDoubleBoxes.value = { rows: finalRowPairs, cols: finalColPairs };
 
-    //组件提取与颜色分类
     let mask100 = new cv.Mat();
     cv.threshold(gray, mask100, 100, 255, cv.THRESH_BINARY);
     matsToRelease.push(mask100);
@@ -930,7 +1000,6 @@ const detectDoubleMapDebug = async (imgElement) => {
     cv.imshow(tempCanvas, piecesDebugMat);
     piecesPreviewUrl.value = tempCanvas.toDataURL('image/jpeg');
 
-    //Debug
     currentStep.value = 'debug';
     await nextTick();
     cv.imshow(debugCanvas.value, debugMat);
