@@ -37,7 +37,5 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
-
-puzzle_assistant.iml
-
-.vscode/
+/.vscode/
+/puzzle_assistant.iml
